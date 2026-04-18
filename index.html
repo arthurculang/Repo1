@@ -160,14 +160,13 @@
     <button id="panel-toggle" type="button" aria-label="Toggle controls"></button>
     <h1>Organismal</h1>
     <div class="sub">
-      A free-form alien sculpture grown by simulation: random nuclei are
-      seeded, connected by a minimum spanning tree, then evolved through
-      several generations of branching, mutation and cross-fusion. Each
-      active tip can mutate direction, fork, die, or reach over and fuse
-      with a neighbor. Antiballs carve real negative space and a noise
-      field wrinkles the surface. The whole cloud is blended into a single
-      watertight mesh by marching cubes — physically unrealizable by any
-      method other than 3D printing.
+      A multi-pass generative sculpture. Random nuclei are evolved through
+      generations of branching and cross-fusion, then each leaf tip seeds
+      a recursive sub-growth at smaller scale for true fractal self-similarity.
+      Hard-edged polyhedra and interlocking metal rings are unioned with the
+      organic mass; antiballs carve voids; a multi-octave ridged noise
+      wrinkles the surface. The result is a single multi-shell STL printable
+      in metal — and topologically irreproducible by hand.
     </div>
 
     <div class="actions">
@@ -184,13 +183,18 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Starting nuclei</label><span class="val" id="v-nuc">4</span></div>
-      <input type="range" id="s-nuc" min="1" max="8" step="1" value="4" />
+      <div class="row"><label>Starting nuclei</label><span class="val" id="v-nuc">5</span></div>
+      <input type="range" id="s-nuc" min="1" max="8" step="1" value="5" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Generations</label><span class="val" id="v-gen">4</span></div>
-      <input type="range" id="s-gen" min="2" max="7" step="1" value="4" />
+      <div class="row"><label>Generations</label><span class="val" id="v-gen">5</span></div>
+      <input type="range" id="s-gen" min="2" max="7" step="1" value="5" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Recursion</label><span class="val" id="v-rec">2</span></div>
+      <input type="range" id="s-rec" min="0" max="3" step="1" value="2" />
     </div>
 
     <div class="slider">
@@ -209,8 +213,23 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Holes</label><span class="val" id="v-holes">25%</span></div>
-      <input type="range" id="s-holes" min="0" max="100" step="1" value="25" />
+      <div class="row"><label>Hard edges</label><span class="val" id="v-hard">40%</span></div>
+      <input type="range" id="s-hard" min="0" max="100" step="1" value="40" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Interlocks</label><span class="val" id="v-loops">35%</span></div>
+      <input type="range" id="s-loops" min="0" max="100" step="1" value="35" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Symmetry</label><span class="val" id="v-sym">none</span></div>
+      <input type="range" id="s-sym" min="0" max="6" step="1" value="0" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Holes</label><span class="val" id="v-holes">35%</span></div>
+      <input type="range" id="s-holes" min="0" max="100" step="1" value="35" />
     </div>
 
     <div class="slider">
@@ -224,8 +243,8 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Resolution</label><span class="val" id="v-res">72</span></div>
-      <input type="range" id="s-res" min="40" max="112" step="4" value="72" />
+      <div class="row"><label>Resolution</label><span class="val" id="v-res">80</span></div>
+      <input type="range" id="s-res" min="40" max="128" step="4" value="80" />
     </div>
   </aside>
 
@@ -250,6 +269,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // --- Scene setup ---
 const view = document.getElementById('view');
@@ -614,7 +634,174 @@ function grow(params, rng) {
     });
   }
 
+  // Stage 9: recursive sub-growth — each surviving leaf seeds a miniature
+  // growth at smaller scale. Repeat for `recursion` levels for true fractal
+  // self-similarity (the same form re-appears at multiple scales).
+  let frontier = nodes.filter(n => n.active);
+  for (let r = 0; r < params.recursion; r++) {
+    const nextFrontier = [];
+    const subScale = Math.pow(0.55, r + 1);
+    for (const seed of frontier) {
+      // Each seed runs 1–2 generations of small branching.
+      let active = [seed];
+      const subGens = 1 + Math.floor(rng() * 2);
+      for (let g = 0; g < subGens; g++) {
+        const next = [];
+        for (const p of active) {
+          const k = 2 + Math.floor(rng() * 3);
+          for (let c = 0; c < k; c++) {
+            const dir = randomUnitVec(rng);
+            const step = (p.size || 0.02) * (1.4 + rng() * 1.0);
+            const cx = p.x + dir.x * step;
+            const cy = p.y + dir.y * step;
+            const cz = p.z + dir.z * step;
+            if (cx < lo || cx > hi || cy < lo || cy > hi || cz < lo || cz > hi) continue;
+            const cs = Math.max(0.007, (p.size || 0.02) * 0.55);
+            const child = { x: cx, y: cy, z: cz, size: cs, active: true };
+            next.push(child);
+            prims.push({ type: 'ball', x: cx, y: cy, z: cz, size: cs, weight: 0.85 });
+            prims.push({
+              type: 'capsule',
+              x1: p.x, y1: p.y, z1: p.z, x2: cx, y2: cy, z2: cz,
+              size: Math.max(0.005, cs * 0.32),
+              weight: 0.8,
+            });
+          }
+        }
+        active = next;
+      }
+      nextFrontier.push(...active);
+    }
+    frontier = nextFrontier;
+  }
+
+  // Stage 10: hard-edged polyhedra — boxes and octahedra placed at random
+  // nodes, with random orientation. They union into the final mesh with
+  // visible flat faces and sharp edges, breaking the all-smooth metaball look.
+  const hardCount = Math.floor(params.hard * 18);
+  const polys = [];
+  for (let i = 0; i < hardCount; i++) {
+    const host = nodes[Math.floor(rng() * nodes.length)];
+    if (!host) break;
+    const sz = host.size * (1.4 + rng() * 1.6);
+    polys.push({
+      type: rng() < 0.55 ? 'box' : 'octa',
+      x: host.x, y: host.y, z: host.z,
+      size: sz,
+      // Random rotation as Euler angles.
+      rx: rng() * Math.PI * 2,
+      ry: rng() * Math.PI * 2,
+      rz: rng() * Math.PI * 2,
+    });
+  }
+
+  // Stage 11: interlocking tori — placed perpendicular to the midpoint of a
+  // random connection capsule so the capsule passes through the torus's
+  // hole. They union with the main mesh but each is a separate closed
+  // shell, so the result has REAL topological loops you can't draw out.
+  const loopCount = Math.floor(params.loops * 14);
+  const tori = [];
+  // Build a list of capsules from prims to choose from.
+  const capsules = prims.filter(p => p.type === 'capsule');
+  for (let i = 0; i < loopCount && capsules.length; i++) {
+    const cap = capsules[Math.floor(rng() * capsules.length)];
+    const cx = (cap.x1 + cap.x2) / 2;
+    const cy = (cap.y1 + cap.y2) / 2;
+    const cz = (cap.z1 + cap.z2) / 2;
+    const ax = cap.x2 - cap.x1;
+    const ay = cap.y2 - cap.y1;
+    const az = cap.z2 - cap.z1;
+    const aLen = Math.hypot(ax, ay, az) || 1;
+    // Major radius must clear the capsule's tube radius.
+    const major = Math.max(cap.size * 2.5, 0.025) * (1 + rng() * 1.5);
+    const minor = Math.max(0.005, cap.size * (0.5 + rng() * 0.5));
+    if (cx - major < lo || cx + major > hi || cy - major < lo || cy + major > hi ||
+        cz - major < lo || cz + major > hi) continue;
+    tori.push({
+      type: 'torus',
+      x: cx, y: cy, z: cz,
+      // Axis along the capsule (so capsule passes through hole).
+      ax: ax / aLen, ay: ay / aLen, az: az / aLen,
+      major, minor,
+    });
+  }
+
+  prims.push(...polys, ...tori);
+
+  // Stage 12: symmetry pass. Re-emits a mirrored / rotated copy of all
+  // additive primitives. Excluded: antiballs (would carve in symmetric
+  // pairs which often double-cancels) and the symmetry copies themselves
+  // (we only iterate over a snapshot taken before any copying).
+  const symMode = params.symmetry;
+  if (symMode > 0) {
+    const snapshot = prims.slice(); // freeze before we add copies
+    const transforms = [];
+    if (symMode === 1) {
+      // Bilateral about XZ plane.
+      transforms.push((p) => mirrorAxis(p, 'x'));
+    } else if (symMode === 2) {
+      transforms.push((p) => mirrorAxis(p, 'x'));
+      transforms.push((p) => mirrorAxis(p, 'z'));
+    } else {
+      // 3,4,5,6-fold radial about Y.
+      const N = symMode;
+      for (let i = 1; i < N; i++) {
+        const ang = (i / N) * Math.PI * 2;
+        transforms.push((p) => rotateAroundY(p, ang));
+      }
+    }
+    for (const xform of transforms) {
+      for (const p of snapshot) {
+        const copy = xform(p);
+        if (copy) prims.push(copy);
+      }
+    }
+  }
+
   return prims;
+}
+
+// Symmetry helpers operate on prims in [0,1]^3 about the center (0.5, 0.5, 0.5).
+function mirrorAxis(p, axis) {
+  const m = (v) => 1 - v;
+  const c = { ...p };
+  if (p.type === 'ball' || p.type === 'antiball' || p.type === 'box' || p.type === 'octa') {
+    c.x = axis === 'x' ? m(p.x) : p.x;
+    c.y = axis === 'y' ? m(p.y) : p.y;
+    c.z = axis === 'z' ? m(p.z) : p.z;
+  } else if (p.type === 'capsule') {
+    c.x1 = axis === 'x' ? m(p.x1) : p.x1;
+    c.y1 = axis === 'y' ? m(p.y1) : p.y1;
+    c.z1 = axis === 'z' ? m(p.z1) : p.z1;
+    c.x2 = axis === 'x' ? m(p.x2) : p.x2;
+    c.y2 = axis === 'y' ? m(p.y2) : p.y2;
+    c.z2 = axis === 'z' ? m(p.z2) : p.z2;
+  } else if (p.type === 'torus') {
+    c.x = axis === 'x' ? m(p.x) : p.x;
+    c.y = axis === 'y' ? m(p.y) : p.y;
+    c.z = axis === 'z' ? m(p.z) : p.z;
+    c.ax = axis === 'x' ? -p.ax : p.ax;
+    c.ay = axis === 'y' ? -p.ay : p.ay;
+    c.az = axis === 'z' ? -p.az : p.az;
+  }
+  return c;
+}
+
+function rotateAroundY(p, ang) {
+  const cs = Math.cos(ang), sn = Math.sin(ang);
+  const rot = (x, z) => ({ x: 0.5 + (x - 0.5) * cs - (z - 0.5) * sn, z: 0.5 + (x - 0.5) * sn + (z - 0.5) * cs });
+  const c = { ...p };
+  if (p.type === 'ball' || p.type === 'antiball' || p.type === 'box' || p.type === 'octa') {
+    const r = rot(p.x, p.z); c.x = r.x; c.z = r.z;
+  } else if (p.type === 'capsule') {
+    const r1 = rot(p.x1, p.z1), r2 = rot(p.x2, p.z2);
+    c.x1 = r1.x; c.z1 = r1.z; c.x2 = r2.x; c.z2 = r2.z;
+  } else if (p.type === 'torus') {
+    const r = rot(p.x, p.z); c.x = r.x; c.z = r.z;
+    const ra = rot(0.5 + p.ax, 0.5 + p.az);
+    c.ax = ra.x - 0.5; c.az = ra.z - 0.5;
+  }
+  return c;
 }
 
 const nextFrame = () => new Promise(r => setTimeout(r, 0));
@@ -774,8 +961,62 @@ async function buildSculptureAsync(params, onProgress) {
   geo.scale(scale, scale, scale);
 
   if (effect.geometry) effect.geometry.dispose();
+
+  // Stage 13: hard-edged polyhedra and interlocking tori as separate
+  // closed shells, merged into the same BufferGeometry. Slicers union all
+  // shells in an STL into one printable solid, so the result is still a
+  // single 3D-printable object even though it has multiple closed surfaces.
+  // Both sources must be non-indexed for mergeGeometries to accept them.
+  const extras = [];
+  // Field coords were [0,1] mapped to mesh space [-1,1] then scaled to mm.
+  // So a primitive at field (px, py, pz) lands at world (px*2-1)*scale.
+  const toWorld = (v) => (v * 2 - 1) * scale;
+  for (const p of prims) {
+    if (p.type === 'box') {
+      const s = p.size * 2 * scale;
+      const g = new THREE.BoxGeometry(s, s, s).toNonIndexed();
+      const e = new THREE.Euler(p.rx, p.ry, p.rz);
+      g.applyQuaternion(new THREE.Quaternion().setFromEuler(e));
+      g.translate(toWorld(p.x), toWorld(p.y), toWorld(p.z));
+      g.computeVertexNormals();
+      g.deleteAttribute('uv'); // MC output has only position+normal
+      extras.push(g);
+    } else if (p.type === 'octa') {
+      const s = p.size * 2 * scale;
+      const g = new THREE.OctahedronGeometry(s, 0).toNonIndexed();
+      const e = new THREE.Euler(p.rx, p.ry, p.rz);
+      g.applyQuaternion(new THREE.Quaternion().setFromEuler(e));
+      g.translate(toWorld(p.x), toWorld(p.y), toWorld(p.z));
+      g.computeVertexNormals();
+      g.deleteAttribute('uv'); // MC output has only position+normal
+      extras.push(g);
+    } else if (p.type === 'torus') {
+      const major = p.major * 2 * scale;
+      const minor = p.minor * 2 * scale;
+      const g = new THREE.TorusGeometry(major, minor, 10, 28).toNonIndexed();
+      // Default torus axis is +Z; rotate so axis aligns with (ax, ay, az).
+      const target = new THREE.Vector3(p.ax, p.ay, p.az).normalize();
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), target);
+      g.applyQuaternion(q);
+      g.translate(toWorld(p.x), toWorld(p.y), toWorld(p.z));
+      g.computeVertexNormals();
+      g.deleteAttribute('uv'); // MC output has only position+normal
+      extras.push(g);
+    }
+  }
+  let finalGeo = geo;
+  if (extras.length > 0) {
+    extras.unshift(geo);
+    const merged = mergeGeometries(extras, false);
+    if (merged) {
+      // Dispose intermediates we no longer need.
+      for (const g of extras) if (g !== geo) g.dispose();
+      finalGeo = merged;
+    }
+  }
+
   onProgress(1.0);
-  return geo;
+  return finalGeo;
 }
 
 // --- Wiring sliders ---
@@ -784,9 +1025,13 @@ const sliders = {
   size: document.getElementById('s-size'),
   nuc: document.getElementById('s-nuc'),
   gen: document.getElementById('s-gen'),
+  rec: document.getElementById('s-rec'),
   fert: document.getElementById('s-fert'),
   mut: document.getElementById('s-mut'),
   cross: document.getElementById('s-cross'),
+  hard: document.getElementById('s-hard'),
+  loops: document.getElementById('s-loops'),
+  sym: document.getElementById('s-sym'),
   holes: document.getElementById('s-holes'),
   noise: document.getElementById('s-noise'),
   thick: document.getElementById('s-thick'),
@@ -796,9 +1041,13 @@ const labels = {
   size: document.getElementById('v-size'),
   nuc: document.getElementById('v-nuc'),
   gen: document.getElementById('v-gen'),
+  rec: document.getElementById('v-rec'),
   fert: document.getElementById('v-fert'),
   mut: document.getElementById('v-mut'),
   cross: document.getElementById('v-cross'),
+  hard: document.getElementById('v-hard'),
+  loops: document.getElementById('v-loops'),
+  sym: document.getElementById('v-sym'),
   holes: document.getElementById('v-holes'),
   noise: document.getElementById('v-noise'),
   thick: document.getElementById('v-thick'),
@@ -810,9 +1059,13 @@ function readParams() {
     size: parseFloat(sliders.size.value),
     nuclei: parseInt(sliders.nuc.value, 10),
     generations: parseInt(sliders.gen.value, 10),
+    recursion: parseInt(sliders.rec.value, 10),
     fertility: parseFloat(sliders.fert.value) / 100,
     mutation: parseFloat(sliders.mut.value) / 100,
     anastomosis: parseFloat(sliders.cross.value) / 100,
+    hard: parseFloat(sliders.hard.value) / 100,
+    loops: parseFloat(sliders.loops.value) / 100,
+    symmetry: parseInt(sliders.sym.value, 10),
     holes: parseFloat(sliders.holes.value) / 100,
     noise: parseFloat(sliders.noise.value) / 100,
     thickness: 60 + (1 - parseFloat(sliders.thick.value) / 100) * 80,
@@ -821,13 +1074,23 @@ function readParams() {
   };
 }
 
+const symLabel = (n) =>
+  n === 0 ? 'none' :
+  n === 1 ? 'bilateral' :
+  n === 2 ? '2-axis mirror' :
+  `${n}-fold radial`;
+
 function updateLabels() {
   labels.size.textContent = `${sliders.size.value} mm`;
   labels.nuc.textContent = sliders.nuc.value;
   labels.gen.textContent = sliders.gen.value;
+  labels.rec.textContent = sliders.rec.value;
   labels.fert.textContent = `${sliders.fert.value}%`;
   labels.mut.textContent = `${sliders.mut.value}%`;
   labels.cross.textContent = `${sliders.cross.value}%`;
+  labels.hard.textContent = `${sliders.hard.value}%`;
+  labels.loops.textContent = `${sliders.loops.value}%`;
+  labels.sym.textContent = symLabel(parseInt(sliders.sym.value, 10));
   labels.holes.textContent = `${sliders.holes.value}%`;
   labels.noise.textContent = `${sliders.noise.value}%`;
   labels.thick.textContent = `${sliders.thick.value}%`;
@@ -913,15 +1176,19 @@ for (const k of Object.keys(sliders)) {
 document.getElementById('reset').addEventListener('click', () => {
   currentSeed = 424242;
   sliders.size.value = 120;
-  sliders.nuc.value = 4;
-  sliders.gen.value = 4;
+  sliders.nuc.value = 5;
+  sliders.gen.value = 5;
+  sliders.rec.value = 2;
   sliders.fert.value = 85;
   sliders.mut.value = 60;
   sliders.cross.value = 35;
-  sliders.holes.value = 25;
+  sliders.hard.value = 40;
+  sliders.loops.value = 35;
+  sliders.sym.value = 0;
+  sliders.holes.value = 35;
   sliders.noise.value = 55;
   sliders.thick.value = 45;
-  sliders.res.value = 72;
+  sliders.res.value = 80;
   scheduleRebuild();
 });
 
@@ -933,12 +1200,17 @@ document.getElementById('randomize').addEventListener('click', () => {
   currentSeed = (Math.random() * 1e9) | 0;
   sliders.size.value = rand(100, 180);
   sliders.nuc.value = rand(2, 7);
-  sliders.gen.value = rand(3, 6);
-  sliders.fert.value = rand(55, 95);
+  sliders.gen.value = rand(4, 6);
+  sliders.rec.value = rand(1, 3);
+  sliders.fert.value = rand(60, 95);
   sliders.mut.value = rand(30, 90);
-  sliders.cross.value = rand(10, 75);
-  sliders.holes.value = rand(5, 60);
-  sliders.noise.value = rand(15, 70);
+  sliders.cross.value = rand(15, 75);
+  sliders.hard.value = rand(15, 75);
+  sliders.loops.value = rand(15, 65);
+  // Symmetry: 60% chance of asymmetric, 40% chance of some symmetry.
+  sliders.sym.value = Math.random() < 0.6 ? 0 : rand(1, 6);
+  sliders.holes.value = rand(15, 60);
+  sliders.noise.value = rand(25, 75);
   sliders.thick.value = rand(30, 60);
   scheduleRebuild();
 });
