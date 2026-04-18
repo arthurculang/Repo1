@@ -98,6 +98,18 @@
     width: 100%; margin-top: 8px; accent-color: var(--accent);
   }
 
+  .version {
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.4px;
+    text-align: center;
+    opacity: 0.7;
+  }
+
   .actions { display: flex; gap: 8px; margin-top: 12px; }
   button {
     flex: 1;
@@ -246,6 +258,8 @@
       <div class="row"><label>Resolution</label><span class="val" id="v-res">96</span></div>
       <input type="range" id="s-res" min="40" max="128" step="4" value="96" />
     </div>
+
+    <div class="version" id="version">v14</div>
   </aside>
 
   <main id="view">
