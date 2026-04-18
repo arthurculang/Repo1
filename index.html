@@ -205,8 +205,8 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Recursion</label><span class="val" id="v-rec">2</span></div>
-      <input type="range" id="s-rec" min="0" max="3" step="1" value="2" />
+      <div class="row"><label>Recursion</label><span class="val" id="v-rec">1</span></div>
+      <input type="range" id="s-rec" min="0" max="3" step="1" value="1" />
     </div>
 
     <div class="slider">
@@ -259,7 +259,7 @@
       <input type="range" id="s-res" min="40" max="128" step="4" value="96" />
     </div>
 
-    <div class="version" id="version">v15</div>
+    <div class="version" id="version">v16</div>
   </aside>
 
   <main id="view">
@@ -537,10 +537,19 @@ function grow(params, rng) {
   // generations have grown. This is where "bridges, linkages" come from.
   // Pass 1: every node gets its K nearest non-adjacent neighbors linked.
   if (anast > 0 && nodes.length > 3) {
-    const k = 2 + Math.floor(anast * 4);
-    const maxD = 0.12 + anast * 0.12;
-    for (const a of nodes) {
-      // Find k nearest nodes within maxD.
+    const k = 2 + Math.floor(anast * 3);
+    const maxD = 0.12 + anast * 0.1;
+    // Total bridge budget — prevents O(N²) capsule explosion on large nodes.
+    const bridgeBudget = Math.min(400, Math.floor(nodes.length * (0.5 + anast)));
+    let bridgesAdded = 0;
+    // Shuffle nodes so we sample uniformly when capping.
+    const shuffledNodes = nodes.slice();
+    for (let i = shuffledNodes.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [shuffledNodes[i], shuffledNodes[j]] = [shuffledNodes[j], shuffledNodes[i]];
+    }
+    for (const a of shuffledNodes) {
+      if (bridgesAdded >= bridgeBudget) break;
       const cand = [];
       for (const n of nodes) {
         if (n === a) continue;
@@ -550,6 +559,7 @@ function grow(params, rng) {
       cand.sort((x, y) => x.d - y.d);
       const picks = cand.slice(0, k);
       for (const { n } of picks) {
+        if (bridgesAdded >= bridgeBudget) break;
         if (rng() > 0.35 + anast * 0.4) continue;
         prims.push({
           type: 'capsule',
@@ -557,6 +567,7 @@ function grow(params, rng) {
           size: Math.max(0.006, Math.min(a.size, n.size) * 0.2),
           weight: 0.65,
         });
+        bridgesAdded++;
       }
     }
   }
@@ -627,9 +638,18 @@ function grow(params, rng) {
 
   // Stage 8: recursive sub-growth — each surviving leaf seeds a miniature
   // growth at smaller scale. Repeat for `recursion` levels for true fractal
-  // self-similarity (the same form re-appears at multiple scales).
+  // self-similarity. CAPPED per level to prevent exponential blowup.
   let frontier = nodes.filter(n => n.active);
+  const recursionCap = 250; // hard upper bound on frontier size
   for (let r = 0; r < params.recursion; r++) {
+    // Sample down if frontier is too large.
+    if (frontier.length > recursionCap) {
+      const sampled = [];
+      for (let i = 0; i < recursionCap; i++) {
+        sampled.push(frontier[Math.floor(rng() * frontier.length)]);
+      }
+      frontier = sampled;
+    }
     const nextFrontier = [];
     for (const seed of frontier) {
       let active = [seed];
@@ -637,7 +657,8 @@ function grow(params, rng) {
       for (let g = 0; g < subGens; g++) {
         const next = [];
         for (const p of active) {
-          const k = 2 + Math.floor(rng() * 3);
+          // Fewer children per step — 1–2 instead of 2–4.
+          const k = 1 + Math.floor(rng() * 2);
           for (let c = 0; c < k; c++) {
             const dir = randomUnitVec(rng);
             const step = (p.size || 0.015) * (1.8 + rng() * 1.2);
@@ -645,7 +666,7 @@ function grow(params, rng) {
             const cy = p.y + dir.y * step;
             const cz = p.z + dir.z * step;
             if (cx < lo || cx > hi || cy < lo || cy > hi || cz < lo || cz > hi) continue;
-            const cs = Math.max(0.006, (p.size || 0.015) * 0.6);
+            const cs = Math.max(0.006, (p.size || 0.015) * 0.55);
             const child = { x: cx, y: cy, z: cz, size: cs, active: true };
             next.push(child);
             prims.push({ type: 'ball', x: cx, y: cy, z: cz, size: cs, weight: 0.65 });
@@ -824,13 +845,29 @@ async function buildSculptureAsync(params, onProgress) {
     return true;
   });
 
+  // Hard global cap on primitives to prevent iOS Safari OOM crashes.
+  // Discrete geometry is fast but memory-hungry: each SphereGeometry(r,8,6)
+  // is ~100 triangles = ~1.5 KB of position+normal data. 1500 primitives is
+  // a comfortable ceiling for iPhone Safari.
+  const MAX_PRIMS = 1500;
+  if (prims.length > MAX_PRIMS) {
+    // Shuffle so we sample uniformly across primitive types / locations.
+    for (let i = prims.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [prims[i], prims[j]] = [prims[j], prims[i]];
+    }
+    prims = prims.slice(0, MAX_PRIMS);
+  }
+
   onProgress(0.25); await nextFrame();
 
   const scale = params.size / 2;
   const toWorld = (v) => (v * 2 - 1) * scale;
 
   // Resolution controls how many polygons each primitive is tessellated into.
-  const resF = Math.max(0.55, params.resolution / 80);
+  // Lower baseline (was /80, now /100) to keep per-primitive triangle count
+  // modest even at the res slider's default value.
+  const resF = Math.max(0.5, params.resolution / 100);
   // Surface-noise: per-vertex displacement along the normal. Amplitude is a
   // fraction of the primitive's own radius so detail scales with feature.
   const noiseOn = params.noise > 0.001;
@@ -867,7 +904,7 @@ async function buildSculptureAsync(params, onProgress) {
     if (p.type === 'ball') {
       const r = p.size * 2 * scale * params.thickness;
       if (r < 0.2) { processed++; continue; }
-      const w = Math.max(6, Math.round(10 * resF));
+      const w = Math.max(6, Math.round(8 * resF));
       const h = Math.max(5, Math.round(w * 0.7));
       g = new THREE.SphereGeometry(r, w, h).toNonIndexed();
       g.deleteAttribute('uv');
@@ -881,7 +918,7 @@ async function buildSculptureAsync(params, onProgress) {
       const len = Math.hypot(dx, dy, dz);
       const r = p.size * 2 * scale * params.thickness;
       if (len < 0.1 || r < 0.15) { processed++; continue; }
-      const segs = Math.max(5, Math.round(8 * resF));
+      const segs = Math.max(5, Math.round(6 * resF));
       g = new THREE.CylinderGeometry(r, r, len, segs, 1, false).toNonIndexed();
       g.deleteAttribute('uv');
       // Default cylinder axis is +Y; rotate to align with (dx, dy, dz).
@@ -901,8 +938,8 @@ async function buildSculptureAsync(params, onProgress) {
       const major = p.major * 2 * scale;
       const minor = p.minor * 2 * scale * params.thickness;
       if (minor < 0.15 || major < 0.3) { processed++; continue; }
-      const big = Math.max(16, Math.round(28 * resF));
-      const sml = Math.max(6, Math.round(10 * resF));
+      const big = Math.max(14, Math.round(20 * resF));
+      const sml = Math.max(6, Math.round(8 * resF));
       g = new THREE.TorusGeometry(major, minor, sml, big).toNonIndexed();
       g.deleteAttribute('uv');
       const target = new THREE.Vector3(p.ax, p.ay, p.az).normalize();
@@ -931,7 +968,8 @@ async function buildSculptureAsync(params, onProgress) {
 
     if (g) pieces.push(g);
     processed++;
-    if (processed % 80 === 0) {
+    // Yield every 40 primitives so GC runs and the progress bar updates.
+    if (processed % 40 === 0) {
       onProgress(0.25 + (processed / total) * 0.65);
       await nextFrame();
     }
@@ -1108,7 +1146,7 @@ document.getElementById('reset').addEventListener('click', () => {
   sliders.size.value = 120;
   sliders.nuc.value = 5;
   sliders.gen.value = 5;
-  sliders.rec.value = 2;
+  sliders.rec.value = 1;
   sliders.fert.value = 85;
   sliders.mut.value = 60;
   sliders.cross.value = 60;
@@ -1131,7 +1169,7 @@ document.getElementById('randomize').addEventListener('click', () => {
   sliders.size.value = rand(100, 180);
   sliders.nuc.value = rand(2, 7);
   sliders.gen.value = rand(4, 6);
-  sliders.rec.value = rand(1, 3);
+  sliders.rec.value = rand(0, 2);
   sliders.fert.value = rand(60, 95);
   sliders.mut.value = rand(30, 90);
   sliders.cross.value = rand(15, 75);
