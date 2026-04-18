@@ -352,113 +352,141 @@ function makeValueNoise(seed) {
 function generateSeeds(params, rng, noise3d) {
   const seeds = [];
 
-  // Central trunk — always present so everything reaches the core.
-  const trunkSegs = 6;
-  for (let i = 0; i < trunkSegs; i++) {
-    const t = i / (trunkSegs - 1);
-    seeds.push({
-      kind: 'ball',
-      r: 0,
-      theta: 0,
-      y: 0.15 + t * 0.7,
-      size: 0.11 + 0.04 * Math.sin(Math.PI * t),
-      weight: 1.0,
-    });
-  }
+  // Thin vertical spine (one capsule) — provides internal connectivity
+  // without filling the interior the way a stack of fat balls did. Radius
+  // is deliberately small; branches attach via their own capsules.
+  seeds.push({
+    kind: 'capsule',
+    r1: 0, theta1: 0, y1: 0.18,
+    r2: 0, theta2: 0, y2: 0.86,
+    size: 0.028,
+    weight: 0.9,
+  });
 
-  // Base pad for tabletop stability — a wide flat lump near y=0.12.
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
-    seeds.push({
-      kind: 'ball',
-      r: 0.08 + rng() * 0.05,
-      theta: a,
-      y: 0.10 + rng() * 0.04,
-      size: 0.09 + rng() * 0.03,
-      weight: 0.9,
-      flat: true, // compressed vertically
-    });
-  }
+  // Single wide foot at the bottom for tabletop stability.
+  seeds.push({
+    kind: 'ball',
+    r: 0, theta: 0, y: 0.16,
+    size: 0.085,
+    weight: 1.0,
+    flat: true,
+  });
 
-  // Primary branch seeds — placed inside one angular sector of width (2π/N).
-  // The whole sector will be rotated N times for N-fold symmetry.
+  // Primary limbs — placed in one angular sector, far enough from r=0
+  // that they don't fuse into the spine. Connected to the spine via a
+  // horizontal capsule so attachment is unambiguous.
   const sectorWidth = Math.PI * 2 / params.symmetry;
-  const primaryCount = 2 + Math.floor(rng() * 3);
+  const primaryCount = 3 + Math.floor(rng() * 2);
   const primaries = [];
   for (let i = 0; i < primaryCount; i++) {
     const s = {
       kind: 'ball',
-      r: 0.08 + rng() * 0.14,
-      theta: rng() * sectorWidth,
-      y: 0.25 + rng() * 0.5,
-      size: 0.06 + rng() * 0.06,
-      weight: 0.85 + rng() * 0.25,
+      r: 0.22 + rng() * 0.12,
+      theta: (i + 0.25 + rng() * 0.5) / primaryCount * sectorWidth,
+      y: 0.28 + rng() * 0.5,
+      size: 0.055 + rng() * 0.035,
+      weight: 0.95,
     };
     seeds.push(s);
     primaries.push(s);
+    seeds.push({
+      kind: 'capsule',
+      r1: 0, theta1: 0, y1: s.y,
+      r2: s.r, theta2: s.theta, y2: s.y,
+      size: 0.023,
+      weight: 0.8,
+    });
   }
 
-  // Recursive fractal branching from each primary seed.
+  // Recursive fractal branching — children grow FURTHER outward (larger r)
+  // at each depth, so the tree stays open and legible instead of collapsing
+  // back into the central mass. Sizes decay steeply so terminal twigs are
+  // fine.
   function branch(parent, depth, maxDepth) {
     if (depth >= maxDepth) return;
     const children = 2 + Math.floor(rng() * 2);
-    const scale = Math.pow(0.72, depth + 1);
-    const spread = params.spread * 0.35;
+    const scale = Math.pow(0.58, depth + 1);
+    const spread = params.spread * 0.55;
+    const radialPush = 0.08 * (1 - depth / (maxDepth + 1));
     for (let i = 0; i < children; i++) {
-      // Offset the child outward and up/down with random angular perturbation.
       const dTheta = (rng() - 0.5) * spread;
-      const dR = 0.04 + rng() * 0.12 * scale;
-      const dY = (rng() - 0.5) * 0.22 * scale + 0.02;
-      // Capsule connecting parent to child — guarantees connectivity.
+      const dR = radialPush + rng() * 0.14 * scale;
+      const dY = (rng() - 0.5) * 0.28 * scale;
       const child = {
         kind: 'ball',
-        r: Math.max(0.02, parent.r + dR),
+        r: Math.min(0.46, parent.r + dR),
         theta: parent.theta + dTheta,
-        y: Math.max(0.1, Math.min(0.92, parent.y + dY)),
-        size: Math.max(0.025, parent.size * (0.55 + rng() * 0.3)),
-        weight: parent.weight * 0.85,
+        y: Math.max(0.12, Math.min(0.88, parent.y + dY)),
+        size: Math.max(0.016, parent.size * (0.48 + rng() * 0.2)),
+        weight: parent.weight * 0.88,
       };
       seeds.push({
         kind: 'capsule',
         r1: parent.r, theta1: parent.theta, y1: parent.y,
         r2: child.r, theta2: child.theta, y2: child.y,
-        size: Math.max(0.015, parent.size * 0.55),
+        size: Math.max(0.013, child.size * 0.55),
         weight: parent.weight * 0.8,
       });
       seeds.push(child);
-      // Rosette: occasional cluster of tiny spheres at branch tip.
-      if (depth === maxDepth - 1 && rng() < 0.5) {
-        const petals = 4 + Math.floor(rng() * 4);
+
+      // Tight rosette at terminal tips — petals placed in 3D AROUND the
+      // child center, sized small enough that every petal fuses into it.
+      if (depth === maxDepth - 1 && rng() < 0.75) {
+        const petals = 3 + Math.floor(rng() * 4);
+        const pr = child.size * 0.85;
         for (let p = 0; p < petals; p++) {
-          const pa = (p / petals) * Math.PI * 2 + rng() * 0.3;
-          const pr = child.size * 1.2;
+          const pa = (p / petals) * Math.PI * 2 + rng() * 0.5;
+          const pb = (rng() - 0.5) * Math.PI;
+          const offX = Math.cos(pa) * Math.cos(pb) * pr;
+          const offZ = Math.sin(pa) * Math.cos(pb) * pr;
+          const offY = Math.sin(pb) * pr;
+          // Translate local xyz offset back to (r, theta, y).
+          const safeR = Math.max(0.02, child.r);
           seeds.push({
             kind: 'ball',
-            r: child.r + Math.cos(pa) * pr * 0.6,
-            theta: child.theta + Math.sin(pa) * pr * 3 / Math.max(0.01, child.r),
-            y: child.y + Math.sin(pa + 1.2) * pr * 0.6,
-            size: child.size * 0.45,
-            weight: child.weight * 0.8,
+            r: child.r + offX,
+            theta: child.theta + offZ / safeR,
+            y: child.y + offY,
+            size: child.size * 0.55,
+            weight: child.weight * 0.85,
           });
         }
       }
+
       branch(child, depth + 1, maxDepth);
     }
   }
-
   for (const p of primaries) branch(p, 0, params.depth);
 
-  // Chaos: a small number of asymmetric seeds that live OUTSIDE the sector
-  // replication — these break perfect symmetry.
-  const chaosCount = Math.floor(params.chaos * 16);
+  // Antiballs — negative-strength field contributions that CARVE holes
+  // through the surface. Placed along primary limbs so they punch through
+  // existing material and create real gaps / intricate negative space.
+  const holeCount = 2 + Math.floor(rng() * 4);
+  for (let i = 0; i < holeCount; i++) {
+    const host = primaries[i % primaries.length];
+    seeds.push({
+      kind: 'antiball',
+      r: host.r * (0.3 + rng() * 0.8),
+      theta: host.theta + (rng() - 0.5) * 0.3,
+      y: host.y + (rng() - 0.5) * 0.18,
+      size: 0.04 + rng() * 0.04,
+      weight: 0.9 + rng() * 0.4,
+    });
+  }
+
+  // Chaos seeds: placed NEAR existing primaries (not scattered) so they
+  // attach to the main body. Given full-circle theta (not sector-aligned),
+  // they break symmetry without detaching.
+  const chaosCount = Math.floor(params.chaos * 14);
   for (let i = 0; i < chaosCount; i++) {
+    const host = primaries[Math.floor(rng() * primaries.length)];
     seeds.push({
       kind: 'ball',
-      r: 0.05 + rng() * 0.25,
+      r: Math.max(0.06, host.r + (rng() - 0.5) * 0.12),
       theta: rng() * Math.PI * 2,
-      y: 0.18 + rng() * 0.7,
-      size: 0.03 + rng() * 0.06,
-      weight: 0.4 + rng() * 0.5,
+      y: Math.max(0.14, Math.min(0.86, host.y + (rng() - 0.5) * 0.15)),
+      size: 0.022 + rng() * 0.04,
+      weight: 0.55 + rng() * 0.25,
       asymmetric: true,
     });
   }
@@ -474,10 +502,10 @@ function seedsToPrimitives(seeds, params) {
     const copies = s.asymmetric ? 1 : N;
     for (let n = 0; n < copies; n++) {
       const rotation = (n / N) * Math.PI * 2;
-      if (s.kind === 'ball') {
+      if (s.kind === 'ball' || s.kind === 'antiball') {
         const theta = s.theta + rotation;
         prims.push({
-          type: 'ball',
+          type: s.kind,
           x: 0.5 + Math.cos(theta) * s.r,
           y: s.y,
           z: 0.5 + Math.sin(theta) * s.r,
@@ -536,20 +564,28 @@ async function buildSculptureAsync(params, onProgress) {
   const strengthFor = (r_vis, weight) =>
     Math.max(0.04, r_vis * r_vis * (iso + subtract) * weight);
 
+  // Pass 1: additive primitives (balls + capsules) build the positive mass.
   for (const p of prims) {
     if (p.type === 'ball') {
       effect.addBall(p.x, p.y, p.z, strengthFor(p.size, p.weight), subtract);
     } else if (p.type === 'capsule') {
       const dx = p.x2 - p.x1, dy = p.y2 - p.y1, dz = p.z2 - p.z1;
       const len = Math.hypot(dx, dy, dz);
-      // Sparse chain — just enough overlap to fuse into a continuous tube
-      // between parent and child without flooding the field with balls.
       const steps = Math.max(2, Math.ceil(len / Math.max(0.015, p.size * 1.2)));
       const stepStrength = strengthFor(p.size, p.weight * 0.9);
       for (let i = 0; i <= steps; i++) {
         const t = i / steps;
         effect.addBall(p.x1 + dx * t, p.y1 + dy * t, p.z1 + dz * t, stepStrength, subtract);
       }
+    }
+  }
+
+  // Pass 2: antiballs — negative-strength contributions that punch real
+  // holes through the surface. Done after positive mass so they subtract
+  // from what was built.
+  for (const p of prims) {
+    if (p.type === 'antiball') {
+      effect.addBall(p.x, p.y, p.z, -strengthFor(p.size, p.weight * 1.3), subtract);
     }
   }
 
@@ -580,6 +616,39 @@ async function buildSculptureAsync(params, onProgress) {
             const n2 = noise3d(nx * 2.3, ny * 2.3, nz * 2.3) - 0.5;
             field[i] += (n + n2 * 0.4) * amp;
           }
+        }
+      }
+    }
+  }
+
+  // Seal the grid boundary: force the field to well below isolation on the
+  // outer shell of cells so MarchingCubes always generates a closed surface
+  // even where a primitive might have extended toward the edge. This is
+  // what makes the mesh watertight.
+  {
+    const field = effect.field;
+    const size = effect.size;
+    const size2 = size * size;
+    const sealVal = -subtract; // far below isolation
+    // Two-cell-thick shell for extra safety with noise perturbations.
+    for (let shell = 0; shell < 2; shell++) {
+      const lo = shell, hi = size - 1 - shell;
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          field[lo * size2 + y * size + x] = sealVal;
+          field[hi * size2 + y * size + x] = sealVal;
+        }
+      }
+      for (let z = 0; z < size; z++) {
+        for (let x = 0; x < size; x++) {
+          field[z * size2 + lo * size + x] = sealVal;
+          field[z * size2 + hi * size + x] = sealVal;
+        }
+      }
+      for (let z = 0; z < size; z++) {
+        for (let y = 0; y < size; y++) {
+          field[z * size2 + y * size + lo] = sealVal;
+          field[z * size2 + y * size + hi] = sealVal;
         }
       }
     }
