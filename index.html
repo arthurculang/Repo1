@@ -133,9 +133,25 @@
   #status {
     position: absolute; top: 14px; right: 14px;
     color: var(--muted); font-size: 12px;
-    background: rgba(0,0,0,.3); padding: 6px 10px; border-radius: 8px;
+    background: rgba(0,0,0,.35); padding: 6px 10px; border-radius: 8px;
+    min-width: 120px; text-align: right;
   }
   #status .ok { color: var(--accent); }
+  #status .err { color: #ff7a7a; }
+  #progress {
+    position: absolute; top: 42px; right: 14px;
+    width: 160px; height: 4px;
+    background: rgba(255,255,255,.08);
+    border-radius: 3px;
+    overflow: hidden;
+    display: none;
+  }
+  #progress.visible { display: block; }
+  #progress-fill {
+    height: 100%; width: 0;
+    background: var(--accent);
+    transition: width .15s ease;
+  }
 </style>
 </head>
 <body>
@@ -208,6 +224,7 @@
   <main id="view">
     <div id="hint"></div>
     <div id="status">Ready</div>
+    <div id="progress"><div id="progress-fill"></div></div>
   </main>
 </div>
 
@@ -383,9 +400,8 @@ function buildOrganicStrand(params, index, seed) {
   }
 
   const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5);
-  const tubularSegments = Math.max(80, segments * 3);
-  const radialSegments = Math.max(6, Math.floor(detail / 3));
-  // Slight variation in tube thickness across strands for organic feel.
+  const tubularSegments = Math.max(60, segments * 2);
+  const radialSegments = Math.max(6, Math.floor(detail / 4));
   const thickness = barThickness * (0.85 + rng() * 0.4);
   return { geo: new THREE.TubeGeometry(curve, tubularSegments, thickness, radialSegments, false), curve };
 }
@@ -474,46 +490,55 @@ function ringLinkedTo(prev, majorR, minorR, detail, angle) {
   return { geo, center: pt, axis: tan, major: majorR, minor: minorR };
 }
 
-function buildSculpture(params) {
+const nextFrame = () => new Promise(r => setTimeout(r, 0));
+
+async function buildSculptureAsync(params, onProgress) {
   const seed = params.seed;
   const rng = mulberry32(seed + 999);
   const geos = [];
   const strandCurves = [];
 
-  // Strands (wandering organic tubes from bottom ring to top ring).
+  const bridgeCount = Math.max(2, Math.floor(params.bars * 0.8 + rng() * 3));
+  const bulbCount = Math.floor(params.bars * 1.2 + rng() * 4);
+  const totalSteps = params.bars + 2 + bridgeCount + bulbCount + Math.max(0, params.linkCount) + 1;
+  let done = 0;
+  const tick = async () => {
+    done++;
+    onProgress(done / totalSteps);
+    await nextFrame();
+  };
+
   for (let i = 0; i < params.bars; i++) {
     const s = buildOrganicStrand(params, i, seed);
     geos.push(s.geo);
     strandCurves.push(s.curve);
+    await tick();
   }
 
-  // Base and top rings — wavy, but closed (stable base on a table).
   geos.push(buildOrganicLoop(params, -params.height / 2, seed, 1));
+  await tick();
   geos.push(buildOrganicLoop(params, params.height / 2, seed, 2));
+  await tick();
 
-  // Cross-bridges between strands to make it netlike.
-  const bridgeCount = Math.max(2, Math.floor(params.bars * 0.8 + rng() * 3));
   for (let i = 0; i < bridgeCount; i++) {
     const a = Math.floor(rng() * strandCurves.length);
     let b = Math.floor(rng() * strandCurves.length);
     if (b === a) b = (a + 1) % strandCurves.length;
     const tA = 0.2 + rng() * 0.6;
-    const tB = tA + (rng() - 0.5) * 0.2;
-    geos.push(buildBridge(strandCurves[a], tA, strandCurves[b], Math.min(0.85, Math.max(0.15, tB)), params, seed + i * 31));
+    const tB = Math.min(0.85, Math.max(0.15, tA + (rng() - 0.5) * 0.2));
+    geos.push(buildBridge(strandCurves[a], tA, strandCurves[b], tB, params, seed + i * 31));
+    await tick();
   }
 
-  // Organic knobs fused onto strands.
-  const bulbCount = Math.floor(params.bars * 1.2 + rng() * 4);
   for (let i = 0; i < bulbCount; i++) {
     const c = strandCurves[Math.floor(rng() * strandCurves.length)];
     const t = 0.1 + rng() * 0.8;
     const p = c.getPoint(t);
     const r = params.barThickness * (1.2 + rng() * 1.3);
     geos.push(buildBulb(p, r, params.detail));
+    await tick();
   }
 
-  // Captive chain: first ring is threaded on a strand (interlocked with the
-  // cage so it can't separate); each subsequent ring links through the last.
   if (params.linkCount > 0) {
     const hostIdx = Math.floor(rng() * strandCurves.length);
     const host = strandCurves[hostIdx];
@@ -523,9 +548,8 @@ function buildSculpture(params) {
       params.barThickness * 3 + minor * 2,
       Math.min(params.radius * 0.4, params.height / (params.linkCount + 2))
     );
-    const firstGeo = ringAroundStrand(host, tHost, major, minor, params.detail);
-    geos.push(firstGeo);
-    // Track the first ring's logical state for chaining.
+    geos.push(ringAroundStrand(host, tHost, major, minor, params.detail));
+    await tick();
     const hostPt = host.getPoint(tHost);
     const hostTan = host.getTangent(tHost).normalize();
     let prev = { center: hostPt, axis: hostTan, major, minor };
@@ -534,10 +558,14 @@ function buildSculpture(params) {
       const next = ringLinkedTo(prev, major * (0.85 + rng() * 0.25), minor, params.detail, angle);
       geos.push(next.geo);
       prev = next;
+      await tick();
     }
   }
 
-  return mergeGeometries(geos, false);
+  const merged = mergeGeometries(geos, false);
+  await tick();
+  if (!merged) throw new Error('merge failed (inconsistent attributes)');
+  return merged;
 }
 
 // --- Wiring sliders ---
@@ -597,60 +625,76 @@ function updateLabels() {
 }
 
 let rebuildTimer = null;
+let buildToken = 0;
 function scheduleRebuild() {
   updateLabels();
-  if (rebuildTimer) cancelAnimationFrame(rebuildTimer);
-  rebuildTimer = requestAnimationFrame(rebuild);
+  if (rebuildTimer) clearTimeout(rebuildTimer);
+  rebuildTimer = setTimeout(rebuild, 80);
 }
 
 let currentGeometry = null;
+const progressEl = document.getElementById('progress');
+const progressFill = document.getElementById('progress-fill');
 
-function rebuild() {
-  status.textContent = 'Building…';
-  // dispose old
-  sculptureGroup.traverse(obj => {
-    if (obj.isMesh) obj.geometry.dispose();
-  });
-  scene.remove(sculptureGroup);
-  sculptureGroup = new THREE.Group();
+async function rebuild() {
+  const myToken = ++buildToken;
+  status.innerHTML = 'Building…';
+  progressEl.classList.add('visible');
+  progressFill.style.width = '0%';
+  await nextFrame();
 
-  const params = readParams();
-  const geo = buildSculpture(params);
-  geo.computeVertexNormals();
-  currentGeometry = geo;
+  try {
+    sculptureGroup.traverse(obj => {
+      if (obj.isMesh) obj.geometry.dispose();
+    });
+    scene.remove(sculptureGroup);
+    sculptureGroup = new THREE.Group();
 
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  sculptureGroup.add(mesh);
+    const params = readParams();
+    const geo = await buildSculptureAsync(params, (p) => {
+      if (myToken !== buildToken) return;
+      progressFill.style.width = (p * 100).toFixed(0) + '%';
+    });
+    if (myToken !== buildToken) { geo.dispose(); return; }
 
-  // Faint wireframe overlay for the "engineering" feel
-  const wire = new THREE.Mesh(
-    geo,
-    new THREE.MeshBasicMaterial({ color: 0x7cf7c4, wireframe: true, transparent: true, opacity: 0.05 })
-  );
-  sculptureGroup.add(wire);
+    geo.computeVertexNormals();
+    currentGeometry = geo;
 
-  scene.add(sculptureGroup);
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    sculptureGroup.add(mesh);
 
-  // Auto-frame the camera to the sculpture's bounding sphere.
-  geo.computeBoundingSphere();
-  const sphere = geo.boundingSphere;
-  const fov = camera.fov * Math.PI / 180;
-  const aspect = Math.max(0.0001, view.clientWidth / Math.max(1, view.clientHeight));
-  const distV = sphere.radius / Math.sin(fov / 2);
-  const distH = sphere.radius / Math.sin(Math.atan(Math.tan(fov / 2) * aspect));
-  const dist = Math.max(distV, distH) * 1.25;
-  const dir = camera.position.clone().sub(controls.target).normalize();
-  controls.target.set(0, 0, 0);
-  camera.position.copy(dir.multiplyScalar(dist));
-  camera.near = Math.max(0.1, dist / 100);
-  camera.far = dist * 10;
-  camera.updateProjectionMatrix();
-  // Pull the ground plane down to sit just beneath the object.
-  ground.position.y = -sphere.radius - 5;
+    const wire = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({ color: 0x7cf7c4, wireframe: true, transparent: true, opacity: 0.05 })
+    );
+    sculptureGroup.add(wire);
 
-  status.innerHTML = `<span class="ok">●</span> ${geo.attributes.position.count.toLocaleString()} verts`;
+    scene.add(sculptureGroup);
+
+    geo.computeBoundingSphere();
+    const sphere = geo.boundingSphere;
+    const fov = camera.fov * Math.PI / 180;
+    const aspect = Math.max(0.0001, view.clientWidth / Math.max(1, view.clientHeight));
+    const distV = sphere.radius / Math.sin(fov / 2);
+    const distH = sphere.radius / Math.sin(Math.atan(Math.tan(fov / 2) * aspect));
+    const dist = Math.max(distV, distH) * 1.25;
+    const dir = camera.position.clone().sub(controls.target).normalize();
+    controls.target.set(0, 0, 0);
+    camera.position.copy(dir.multiplyScalar(dist));
+    camera.near = Math.max(0.1, dist / 100);
+    camera.far = dist * 10;
+    camera.updateProjectionMatrix();
+    ground.position.y = -sphere.radius - 5;
+
+    status.innerHTML = `<span class="ok">●</span> ${geo.attributes.position.count.toLocaleString()} verts`;
+    progressEl.classList.remove('visible');
+  } catch (err) {
+    console.error(err);
+    status.innerHTML = `<span class="err">Error: ${String(err.message || err).slice(0, 60)}</span>`;
+    progressEl.classList.remove('visible');
+  }
 }
 
 for (const k of Object.keys(sliders)) {
