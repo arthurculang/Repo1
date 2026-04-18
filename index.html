@@ -111,6 +111,30 @@
   }
 
   .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .modes {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+  }
+  .mode-btn {
+    flex: 1;
+    padding: 8px 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .mode-btn.active {
+    background: linear-gradient(180deg, #2a3147, #1a1f2e);
+    border-color: var(--border);
+    color: var(--ink);
+  }
   button {
     flex: 1;
     background: linear-gradient(180deg, #2a3147, #1a1f2e);
@@ -190,6 +214,11 @@
       <button id="download">Download STL</button>
     </div>
 
+    <div class="modes" role="tablist" aria-label="Mode">
+      <button id="mode-filament" class="mode-btn active" type="button">Filament</button>
+      <button id="mode-coral" class="mode-btn" type="button">Coral</button>
+    </div>
+
     <div class="slider">
       <div class="row"><label>Size</label><span class="val" id="v-size">120 mm</span></div>
       <input type="range" id="s-size" min="40" max="220" step="1" value="120" />
@@ -250,7 +279,7 @@
       <input type="range" id="s-res" min="40" max="128" step="4" value="88" />
     </div>
 
-    <div class="version" id="version">v17</div>
+    <div class="version" id="version">v18</div>
   </aside>
 
   <main id="view">
@@ -274,6 +303,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
 
 // --- Scene setup ---
 const view = document.getElementById('view');
@@ -656,6 +686,7 @@ function spaceColonize(params, rng) {
       if (cand && rng() < 0.3 + params.anastomosis * 0.55) {
         prims.push({
           type: 'capsule',
+          _bridge: true,
           x1: a.x, y1: a.y, z1: a.z, x2: cand.x, y2: cand.y, z2: cand.z,
           size: Math.min(a.radius, cand.radius) * 0.55,
           weight: 0.7,
@@ -737,7 +768,37 @@ function spaceColonize(params, rng) {
     }
   }
 
-  return prims;
+  return { prims, nodes, roots };
+}
+
+// Extract maximal single-child chains from the tree. Each segment is a
+// sequence of nodes forming a smooth path; branching nodes terminate
+// segments and start new ones for each child. Used by Filament mode to
+// emit continuous tapered tubes along paths.
+function extractSegments(roots) {
+  const segments = [];
+  function traverse(node, segment) {
+    segment.push(node);
+    if (node.children.length === 0) {
+      if (segment.length >= 2) segments.push(segment);
+    } else if (node.children.length === 1) {
+      traverse(node.children[0], segment);
+    } else {
+      if (segment.length >= 2) segments.push(segment);
+      for (const child of node.children) {
+        traverse(child, [node]);
+      }
+    }
+  }
+  for (const root of roots) {
+    if (root.children.length === 0) continue;
+    if (root.children.length === 1) {
+      traverse(root.children[0], [root]);
+    } else {
+      for (const child of root.children) traverse(child, [root]);
+    }
+  }
+  return segments;
 }
 
 // Symmetry helpers operate on prims in [0,1]^3 about the center (0.5, 0.5, 0.5).
@@ -796,51 +857,28 @@ async function buildSculptureAsync(params, onProgress) {
 
   onProgress(0.05); await nextFrame();
 
-  let prims = spaceColonize(params, rng);
+  const tree = spaceColonize(params, rng);
 
   onProgress(0.15); await nextFrame();
 
-  // Antiballs define exclusion zones: filter out any primitive whose center
-  // falls inside one. Gives negative space without CSG.
-  const antiballs = prims.filter(p => p.type === 'antiball');
-  const center = (p) => p.type === 'capsule'
-    ? { x: (p.x1 + p.x2) / 2, y: (p.y1 + p.y2) / 2, z: (p.z1 + p.z2) / 2 }
-    : { x: p.x, y: p.y, z: p.z };
-  prims = prims.filter(p => {
-    if (p.type === 'antiball') return false;
-    const c = center(p);
-    for (const ab of antiballs) {
-      const d = Math.hypot(c.x - ab.x, c.y - ab.y, c.z - ab.z);
-      if (d < ab.size * 0.85) return false;
-    }
-    return true;
-  });
-
-  // Hard global cap on primitives to prevent iOS Safari OOM crashes.
-  // Discrete geometry is fast but memory-hungry: each SphereGeometry(r,8,6)
-  // is ~100 triangles = ~1.5 KB of position+normal data. 1500 primitives is
-  // a comfortable ceiling for iPhone Safari.
-  const MAX_PRIMS = 1500;
-  if (prims.length > MAX_PRIMS) {
-    // Shuffle so we sample uniformly across primitive types / locations.
-    for (let i = prims.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [prims[i], prims[j]] = [prims[j], prims[i]];
-    }
-    prims = prims.slice(0, MAX_PRIMS);
+  if (params.mode === 'coral') {
+    return buildCoralMode(tree, params, noise3d, onProgress);
   }
+  return buildFilamentMode(tree, params, noise3d, rng, onProgress);
+}
 
-  onProgress(0.25); await nextFrame();
-
+// ========================================================================
+// FILAMENT mode — continuous tapered tubes along tree paths. Decorations
+// (tori, polyhedra, anastomosis bridges) overlap the tube and merge with it
+// as separate shells (slicer unions them). The main skeleton reads as ONE
+// continuous tube per root-to-leaf path, so connectivity is visually
+// obvious even when the tubes are thin.
+// ========================================================================
+async function buildFilamentMode(tree, params, noise3d, rng, onProgress) {
+  const { prims, nodes, roots } = tree;
   const scale = params.size / 2;
   const toWorld = (v) => (v * 2 - 1) * scale;
-
-  // Resolution controls how many polygons each primitive is tessellated into.
-  // Lower baseline (was /80, now /100) to keep per-primitive triangle count
-  // modest even at the res slider's default value.
   const resF = Math.max(0.5, params.resolution / 100);
-  // Surface-noise: per-vertex displacement along the normal. Amplitude is a
-  // fraction of the primitive's own radius so detail scales with feature.
   const noiseOn = params.noise > 0.001;
   const noiseAmp = params.noise * 0.35;
 
@@ -848,65 +886,117 @@ async function buildSculptureAsync(params, onProgress) {
     if (!noiseOn) return;
     const pos = g.attributes.position;
     const nor = g.attributes.normal;
-    // 3 cycles of noise across the primitive radius.
     const k = 3 / Math.max(0.001, radius);
     const amp = radius * noiseAmp;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
       const nx = nor.getX(i), ny = nor.getY(i), nz = nor.getZ(i);
       const n1 = noise3d(x * k + 11, y * k + 11, z * k + 11) - 0.5;
-      // Ridged mid-freq layer for sharper coral-ish peaks.
       const rn = noise3d(x * k * 2.3, y * k * 2.3, z * k * 2.3);
       const n2 = (1 - Math.abs(rn * 2 - 1)) - 0.5;
       const d = (n1 * 0.7 + n2 * 0.5) * amp;
       pos.setXYZ(i, x + nx * d, y + ny * d, z + nz * d);
     }
     pos.needsUpdate = true;
-    g.computeVertexNormals(); // rebuild normals for displaced surface
+    g.computeVertexNormals();
   }
 
   const pieces = [];
-  const total = prims.length || 1;
-  let processed = 0;
+  const radialSegs = Math.max(5, Math.round(8 * resF));
 
+  // 1. Tapered tubes along every path segment. Each segment is a smooth
+  // curve (CatmullRomCurve3) sampled densely. Between adjacent samples,
+  // emit a CylinderGeometry whose radii taper from the radius at sample
+  // A to the radius at sample B, so the joins between cylinders are
+  // radially matched and read as one continuous tube.
+  const segments = extractSegments(roots);
+  const interp = (arr, t) => {
+    const idx = t * (arr.length - 1);
+    const i0 = Math.floor(idx);
+    const i1 = Math.min(arr.length - 1, i0 + 1);
+    const f = idx - i0;
+    return arr[i0] * (1 - f) + arr[i1] * f;
+  };
+
+  for (const seg of segments) {
+    const pts = seg.map(n => new THREE.Vector3(toWorld(n.x), toWorld(n.y), toWorld(n.z)));
+    const rads = seg.map(n => n.radius * 2 * scale);
+    if (pts.length < 2) continue;
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.3);
+    const samples = Math.max(seg.length * 3, 8);
+    let prev = curve.getPointAt(0);
+    let prevR = rads[0];
+    for (let i = 1; i <= samples; i++) {
+      const t = i / samples;
+      const cur = curve.getPointAt(t);
+      const curR = interp(rads, t);
+      const len = prev.distanceTo(cur);
+      if (len < 0.05) { prev = cur; prevR = curR; continue; }
+      // CylinderGeometry(topRadius, bottomRadius, height, radialSegs).
+      // Cylinder is along +Y, top at +h/2, bottom at -h/2. We'll map
+      // prev→bottom, cur→top (so radii line up with curve direction).
+      const g = new THREE.CylinderGeometry(curR, prevR, len, radialSegs, 1, false).toNonIndexed();
+      g.deleteAttribute('uv');
+      const dir = new THREE.Vector3().subVectors(cur, prev).divideScalar(len);
+      const up = new THREE.Vector3(0, 1, 0);
+      const dot = up.dot(dir);
+      if (Math.abs(dot) < 0.9999) {
+        g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up, dir));
+      } else if (dot < 0) {
+        g.rotateX(Math.PI);
+      }
+      const mid = new THREE.Vector3().addVectors(prev, cur).multiplyScalar(0.5);
+      g.translate(mid.x, mid.y, mid.z);
+      displace(g, (prevR + curR) * 0.5);
+      pieces.push(g);
+      prev = cur; prevR = curR;
+    }
+  }
+
+  // 2. A sphere at every tree node — plugs the potential seam at each
+  // cylinder junction AND caps the tips. Sphere size = node radius so
+  // it never bulges out beyond the tube.
+  for (const n of nodes) {
+    const r = n.radius * 2 * scale;
+    if (r < 0.15) continue;
+    const w = Math.max(6, Math.round(8 * resF));
+    const h = Math.max(5, Math.round(w * 0.7));
+    const g = new THREE.SphereGeometry(r, w, h).toNonIndexed();
+    g.deleteAttribute('uv');
+    g.translate(toWorld(n.x), toWorld(n.y), toWorld(n.z));
+    displace(g, r);
+    pieces.push(g);
+  }
+
+  onProgress(0.55); await nextFrame();
+
+  // 3. Anastomosis bridges, polyhedra, tori from the prim list — these are
+  // already positioned to overlap skeleton nodes/edges so they union into
+  // the same printable solid. Tori use their axis to pass through a
+  // specific parent→child capsule (interlock).
+  let processed = 0;
+  const total = prims.length || 1;
   for (const p of prims) {
     let g = null;
-
-    if (p.type === 'ball') {
-      // Radius is already baked into p.size by spaceColonize (Murray's law
-      // with thicknessScale), so no extra thickness multiplier here.
-      const r = p.size * 2 * scale;
-      if (r < 0.2) { processed++; continue; }
-      const w = Math.max(6, Math.round(8 * resF));
-      const h = Math.max(5, Math.round(w * 0.7));
-      g = new THREE.SphereGeometry(r, w, h).toNonIndexed();
-      g.deleteAttribute('uv');
-      g.translate(toWorld(p.x), toWorld(p.y), toWorld(p.z));
-      displace(g, r);
-
-    } else if (p.type === 'capsule') {
+    if (p.type === 'capsule' && p._bridge) {
       const x1 = toWorld(p.x1), y1 = toWorld(p.y1), z1 = toWorld(p.z1);
       const x2 = toWorld(p.x2), y2 = toWorld(p.y2), z2 = toWorld(p.z2);
       const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
       const len = Math.hypot(dx, dy, dz);
       const r = p.size * 2 * scale;
       if (len < 0.1 || r < 0.15) { processed++; continue; }
-      const segs = Math.max(5, Math.round(6 * resF));
-      g = new THREE.CylinderGeometry(r, r, len, segs, 1, false).toNonIndexed();
+      g = new THREE.CylinderGeometry(r, r, len, radialSegs, 1, false).toNonIndexed();
       g.deleteAttribute('uv');
-      // Default cylinder axis is +Y; rotate to align with (dx, dy, dz).
       const dir = new THREE.Vector3(dx / len, dy / len, dz / len);
       const up = new THREE.Vector3(0, 1, 0);
       const dot = up.dot(dir);
       if (Math.abs(dot) < 0.9999) {
-        const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
-        g.applyQuaternion(q);
+        g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up, dir));
       } else if (dot < 0) {
         g.rotateX(Math.PI);
       }
       g.translate((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
       displace(g, r);
-
     } else if (p.type === 'torus') {
       const major = p.major * 2 * scale;
       const minor = p.minor * 2 * scale;
@@ -916,39 +1006,31 @@ async function buildSculptureAsync(params, onProgress) {
       g = new THREE.TorusGeometry(major, minor, sml, big).toNonIndexed();
       g.deleteAttribute('uv');
       const target = new THREE.Vector3(p.ax, p.ay, p.az).normalize();
-      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), target);
-      g.applyQuaternion(q);
+      g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), target));
       g.translate(toWorld(p.x), toWorld(p.y), toWorld(p.z));
       displace(g, minor);
-
     } else if (p.type === 'box') {
       const s = p.size * 2 * scale;
       g = new THREE.BoxGeometry(s, s, s).toNonIndexed();
       g.deleteAttribute('uv');
-      const e = new THREE.Euler(p.rx, p.ry, p.rz);
-      g.applyQuaternion(new THREE.Quaternion().setFromEuler(e));
+      g.applyQuaternion(new THREE.Quaternion().setFromEuler(new THREE.Euler(p.rx, p.ry, p.rz)));
       g.translate(toWorld(p.x), toWorld(p.y), toWorld(p.z));
-      // Intentionally NOT displaced — keeps crisp hard edges.
-
     } else if (p.type === 'octa') {
       const s = p.size * 2 * scale;
       g = new THREE.OctahedronGeometry(s, 0).toNonIndexed();
       g.deleteAttribute('uv');
-      const e = new THREE.Euler(p.rx, p.ry, p.rz);
-      g.applyQuaternion(new THREE.Quaternion().setFromEuler(e));
+      g.applyQuaternion(new THREE.Quaternion().setFromEuler(new THREE.Euler(p.rx, p.ry, p.rz)));
       g.translate(toWorld(p.x), toWorld(p.y), toWorld(p.z));
     }
-
     if (g) pieces.push(g);
     processed++;
-    // Yield every 40 primitives so GC runs and the progress bar updates.
     if (processed % 40 === 0) {
-      onProgress(0.25 + (processed / total) * 0.65);
+      onProgress(0.55 + (processed / total) * 0.35);
       await nextFrame();
     }
   }
 
-  onProgress(0.92); await nextFrame();
+  onProgress(0.93); await nextFrame();
 
   if (pieces.length === 0) throw new Error('no geometry generated');
   const finalGeo = mergeGeometries(pieces, false);
@@ -957,6 +1039,303 @@ async function buildSculptureAsync(params, onProgress) {
 
   onProgress(1.0);
   return finalGeo;
+}
+
+// ========================================================================
+// CORAL mode — SDF union via smooth-min, extracted as a single watertight
+// manifold mesh through marching cubes. Every primitive becomes an exact
+// signed distance function; the field is the smooth-min union of them all.
+// Connected skeleton → connected surface by construction.
+// ========================================================================
+async function buildCoralMode(tree, params, noise3d, onProgress) {
+  const { prims, nodes, roots } = tree;
+  const scale = params.size / 2;
+
+  const res = Math.max(48, Math.min(144, params.resolution));
+  const effect = new MarchingCubes(res, material, false, false, 300000);
+
+  // We'll write directly to effect.field. Initialize it to a large positive
+  // value (= far OUTSIDE any surface). Marching cubes will extract where
+  // the field crosses isolation=0.
+  const field = effect.field;
+  const size = effect.size;
+  const size2 = size * size;
+  const outside = 9e9;
+  field.fill(outside);
+
+  // Bookkeeping: map from field-coord [0,1] to grid index [0,size).
+  const gx = (v) => v * size;
+  const cellSize = 1 / size; // in field coords
+
+  // SDFs operate in normalized [0,1] field coordinates. smoothMin blends
+  // two primitives with a polynomial kernel of width k.
+  const smoothMinK = 0.025 + (1 - params.noise) * 0.005;
+  const smin = (a, b, k) => {
+    const h = Math.max(0, k - Math.abs(a - b)) / k;
+    return Math.min(a, b) - h * h * k * 0.25;
+  };
+
+  // For each primitive, compute its bounding box in field coords, iterate
+  // cells in that box, and update the field via smoothMin.
+  function writePrim(sdfFn, minX, minY, minZ, maxX, maxY, maxZ) {
+    const ix0 = Math.max(1, Math.floor(minX * size));
+    const iy0 = Math.max(1, Math.floor(minY * size));
+    const iz0 = Math.max(1, Math.floor(minZ * size));
+    const ix1 = Math.min(size - 2, Math.ceil(maxX * size));
+    const iy1 = Math.min(size - 2, Math.ceil(maxY * size));
+    const iz1 = Math.min(size - 2, Math.ceil(maxZ * size));
+    for (let iz = iz0; iz <= iz1; iz++) {
+      const z = iz / size;
+      for (let iy = iy0; iy <= iy1; iy++) {
+        const y = iy / size;
+        const rowOff = iz * size2 + iy * size;
+        for (let ix = ix0; ix <= ix1; ix++) {
+          const x = ix / size;
+          const d = sdfFn(x, y, z);
+          const i = rowOff + ix;
+          field[i] = smin(field[i], d, smoothMinK);
+        }
+      }
+    }
+  }
+  // Same but uses hard min (for crisp polyhedral edges).
+  function writePrimHard(sdfFn, minX, minY, minZ, maxX, maxY, maxZ) {
+    const ix0 = Math.max(1, Math.floor(minX * size));
+    const iy0 = Math.max(1, Math.floor(minY * size));
+    const iz0 = Math.max(1, Math.floor(minZ * size));
+    const ix1 = Math.min(size - 2, Math.ceil(maxX * size));
+    const iy1 = Math.min(size - 2, Math.ceil(maxY * size));
+    const iz1 = Math.min(size - 2, Math.ceil(maxZ * size));
+    for (let iz = iz0; iz <= iz1; iz++) {
+      const z = iz / size;
+      for (let iy = iy0; iy <= iy1; iy++) {
+        const y = iy / size;
+        const rowOff = iz * size2 + iy * size;
+        for (let ix = ix0; ix <= ix1; ix++) {
+          const x = ix / size;
+          const d = sdfFn(x, y, z);
+          const i = rowOff + ix;
+          if (d < field[i]) field[i] = d;
+        }
+      }
+    }
+  }
+
+  // Collect a working primitive list: every tree node as a sphere, every
+  // parent→child edge as a capsule, plus decorations from `prims`.
+  let processed = 0;
+  let total = nodes.length;
+  for (const n of nodes) total += n.parent ? 1 : 0;
+  total += prims.length;
+
+  // 1. Tree nodes → sphere SDFs.
+  for (const n of nodes) {
+    const r = n.radius;
+    if (r < 0.003) { processed++; continue; }
+    const pad = r + smoothMinK;
+    writePrim(
+      (x, y, z) => Math.hypot(x - n.x, y - n.y, z - n.z) - r,
+      n.x - pad, n.y - pad, n.z - pad,
+      n.x + pad, n.y + pad, n.z + pad
+    );
+    processed++;
+    if (processed % 25 === 0) {
+      onProgress(0.15 + (processed / total) * 0.55);
+      await nextFrame();
+    }
+  }
+
+  // 2. Tree edges → capsule SDFs (exact distance to a line segment).
+  for (const n of nodes) {
+    if (!n.parent) continue;
+    const p = n.parent;
+    const ax = p.x, ay = p.y, az = p.z;
+    const bx = n.x, by = n.y, bz = n.z;
+    const r = Math.min(n.radius, p.radius) * 0.95;
+    if (r < 0.003) { processed++; continue; }
+    const pad = r + smoothMinK;
+    const minx = Math.min(ax, bx) - pad, maxx = Math.max(ax, bx) + pad;
+    const miny = Math.min(ay, by) - pad, maxy = Math.max(ay, by) + pad;
+    const minz = Math.min(az, bz) - pad, maxz = Math.max(az, bz) + pad;
+    const abx = bx - ax, aby = by - ay, abz = bz - az;
+    const abSq = abx * abx + aby * aby + abz * abz || 1e-9;
+    writePrim(
+      (x, y, z) => {
+        const apx = x - ax, apy = y - ay, apz = z - az;
+        let t = (apx * abx + apy * aby + apz * abz) / abSq;
+        if (t < 0) t = 0; else if (t > 1) t = 1;
+        const cx = ax + abx * t, cy = ay + aby * t, cz = az + abz * t;
+        return Math.hypot(x - cx, y - cy, z - cz) - r;
+      },
+      minx, miny, minz, maxx, maxy, maxz
+    );
+    processed++;
+    if (processed % 25 === 0) {
+      onProgress(0.15 + (processed / total) * 0.55);
+      await nextFrame();
+    }
+  }
+
+  // 3. Decorations from `prims` — bridges (capsule), tori, boxes, octa.
+  for (const p of prims) {
+    if (p.type === 'capsule' && p._bridge) {
+      const ax = p.x1, ay = p.y1, az = p.z1;
+      const bx = p.x2, by = p.y2, bz = p.z2;
+      const r = p.size;
+      const pad = r + smoothMinK;
+      const abx = bx - ax, aby = by - ay, abz = bz - az;
+      const abSq = abx * abx + aby * aby + abz * abz || 1e-9;
+      writePrim(
+        (x, y, z) => {
+          const apx = x - ax, apy = y - ay, apz = z - az;
+          let t = (apx * abx + apy * aby + apz * abz) / abSq;
+          if (t < 0) t = 0; else if (t > 1) t = 1;
+          const cx = ax + abx * t, cy = ay + aby * t, cz = az + abz * t;
+          return Math.hypot(x - cx, y - cy, z - cz) - r;
+        },
+        Math.min(ax, bx) - pad, Math.min(ay, by) - pad, Math.min(az, bz) - pad,
+        Math.max(ax, bx) + pad, Math.max(ay, by) + pad, Math.max(az, bz) + pad
+      );
+    } else if (p.type === 'torus') {
+      // Torus SDF: axis a, center c, major R, minor r.
+      // d = length(vec2(length(perp(p-c)) - R, dot(a, p-c))) - r
+      const ax = p.ax, ay = p.ay, az = p.az; // unit axis
+      const cx = p.x, cy = p.y, cz = p.z;
+      const R = p.major, r = p.minor;
+      const pad = R + r + smoothMinK;
+      writePrim(
+        (x, y, z) => {
+          const px = x - cx, py = y - cy, pz = z - cz;
+          const along = px * ax + py * ay + pz * az;
+          const perpX = px - along * ax;
+          const perpY = py - along * ay;
+          const perpZ = pz - along * az;
+          const perpLen = Math.hypot(perpX, perpY, perpZ);
+          const qx = perpLen - R;
+          return Math.hypot(qx, along) - r;
+        },
+        cx - pad, cy - pad, cz - pad, cx + pad, cy + pad, cz + pad
+      );
+    } else if (p.type === 'box') {
+      // Rotated box SDF (hard min for crisp edges).
+      const hs = p.size;
+      const pad = hs * 1.75 + smoothMinK;
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(p.rx, p.ry, p.rz)).invert();
+      const v = new THREE.Vector3();
+      writePrimHard(
+        (x, y, z) => {
+          v.set(x - p.x, y - p.y, z - p.z);
+          v.applyQuaternion(q);
+          const qx = Math.abs(v.x) - hs;
+          const qy = Math.abs(v.y) - hs;
+          const qz = Math.abs(v.z) - hs;
+          const out = Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0));
+          const inside = Math.min(0, Math.max(qx, Math.max(qy, qz)));
+          return out + inside;
+        },
+        p.x - pad, p.y - pad, p.z - pad, p.x + pad, p.y + pad, p.z + pad
+      );
+    } else if (p.type === 'octa') {
+      // Octahedron SDF: |x|+|y|+|z| - s, rotated (hard min).
+      const s = p.size;
+      const pad = s * 1.75 + smoothMinK;
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(p.rx, p.ry, p.rz)).invert();
+      const v = new THREE.Vector3();
+      writePrimHard(
+        (x, y, z) => {
+          v.set(x - p.x, y - p.y, z - p.z);
+          v.applyQuaternion(q);
+          return (Math.abs(v.x) + Math.abs(v.y) + Math.abs(v.z) - s) * 0.577;
+        },
+        p.x - pad, p.y - pad, p.z - pad, p.x + pad, p.y + pad, p.z + pad
+      );
+    }
+    processed++;
+    if (processed % 25 === 0) {
+      onProgress(0.15 + (processed / total) * 0.55);
+      await nextFrame();
+    }
+  }
+
+  onProgress(0.78); await nextFrame();
+
+  // 4. Surface-noise displacement: perturb field values near the surface.
+  if (params.noise > 0) {
+    const amp = params.noise * 0.006;
+    const freq = 8 + params.noise * 14;
+    for (let iz = 1; iz < size - 1; iz++) {
+      const z = iz / size;
+      for (let iy = 1; iy < size - 1; iy++) {
+        const y = iy / size;
+        const rowOff = iz * size2 + iy * size;
+        for (let ix = 1; ix < size - 1; ix++) {
+          const i = rowOff + ix;
+          const v = field[i];
+          // Only perturb near the surface (crossing 0).
+          if (v > 0.04 || v < -0.04) continue;
+          const x = ix / size;
+          const n1 = noise3d(x * freq, y * freq, z * freq) - 0.5;
+          const rn = noise3d(x * freq * 2.3, y * freq * 2.3, z * freq * 2.3);
+          const n2 = (1 - Math.abs(rn * 2 - 1)) - 0.5;
+          field[i] += (n1 * 0.7 + n2 * 0.5) * amp;
+        }
+      }
+    }
+  }
+
+  // 5. Seal grid boundary → large positive (far outside) so MC closes the
+  // surface at every edge.
+  const sealVal = outside;
+  for (let shell = 0; shell < 2; shell++) {
+    const lo = shell, hi = size - 1 - shell;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        field[lo * size2 + y * size + x] = sealVal;
+        field[hi * size2 + y * size + x] = sealVal;
+      }
+    }
+    for (let z = 0; z < size; z++) {
+      for (let x = 0; x < size; x++) {
+        field[z * size2 + lo * size + x] = sealVal;
+        field[z * size2 + hi * size + x] = sealVal;
+      }
+    }
+    for (let z = 0; z < size; z++) {
+      for (let y = 0; y < size; y++) {
+        field[z * size2 + y * size + lo] = sealVal;
+        field[z * size2 + y * size + hi] = sealVal;
+      }
+    }
+  }
+
+  onProgress(0.85); await nextFrame();
+
+  // Extract the zero-crossing surface.
+  effect.isolation = 0;
+  effect.update();
+  onProgress(0.93); await nextFrame();
+
+  const numVerts = effect.count;
+  if (numVerts === 0) throw new Error('empty surface');
+  const srcPos = effect.geometry.attributes.position.array;
+  const srcNor = effect.geometry.attributes.normal.array;
+  const floats = numVerts * 3;
+  const pos = new Float32Array(floats);
+  const nor = new Float32Array(floats);
+  for (let i = 0; i < floats; i++) { pos[i] = srcPos[i]; nor[i] = srcNor[i]; }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+
+  // MarchingCubes outputs [-1, 1]; our field coords are [0, 1]. The MC mesh
+  // treats field coord 0.5 as the origin, so a primitive at field (0.5,0.5,0.5)
+  // lands at world origin. Scale by size/2 to get mm.
+  geo.scale(scale, scale, scale);
+  effect.geometry.dispose();
+
+  onProgress(1.0);
+  return geo;
 }
 
 // --- Wiring sliders ---
@@ -990,8 +1369,11 @@ const labels = {
   res: document.getElementById('v-res'),
 };
 
+let currentMode = 'filament'; // 'filament' | 'coral'
+
 function readParams() {
   return {
+    mode: currentMode,
     size: parseFloat(sliders.size.value),
     attractors: parseInt(sliders.attr.value, 10),
     seeds: parseInt(sliders.seeds.value, 10),
@@ -1117,6 +1499,7 @@ for (const k of Object.keys(sliders)) {
 
 document.getElementById('reset').addEventListener('click', () => {
   currentSeed = 424242;
+  setMode('filament');
   sliders.size.value = 120;
   sliders.attr.value = 260;
   sliders.seeds.value = 2;
@@ -1153,6 +1536,17 @@ document.getElementById('randomize').addEventListener('click', () => {
   scheduleRebuild();
 });
 
+const modeFilamentBtn = document.getElementById('mode-filament');
+const modeCoralBtn = document.getElementById('mode-coral');
+function setMode(mode) {
+  currentMode = mode;
+  modeFilamentBtn.classList.toggle('active', mode === 'filament');
+  modeCoralBtn.classList.toggle('active', mode === 'coral');
+  scheduleRebuild();
+}
+modeFilamentBtn.addEventListener('click', () => setMode('filament'));
+modeCoralBtn.addEventListener('click', () => setMode('coral'));
+
 document.getElementById('download').addEventListener('click', () => {
   if (!currentGeometry) return;
   const exporter = new STLExporter();
@@ -1163,7 +1557,7 @@ document.getElementById('download').addEventListener('click', () => {
   const a = document.createElement('a');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   a.href = url;
-  a.download = `organismal-${stamp}.stl`;
+  a.download = `organismal-${currentMode}-${stamp}.stl`;
   document.body.appendChild(a);
   a.click();
   a.remove();
