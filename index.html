@@ -250,8 +250,8 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Thickness</label><span class="val" id="v-thick">35%</span></div>
-      <input type="range" id="s-thick" min="15" max="75" step="1" value="35" />
+      <div class="row"><label>Thickness</label><span class="val" id="v-thick">40%</span></div>
+      <input type="range" id="s-thick" min="0" max="100" step="1" value="40" />
     </div>
 
     <div class="slider">
@@ -259,7 +259,7 @@
       <input type="range" id="s-res" min="40" max="128" step="4" value="96" />
     </div>
 
-    <div class="version" id="version">v14</div>
+    <div class="version" id="version">v15</div>
   </aside>
 
   <main id="view">
@@ -282,7 +282,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
-import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // --- Scene setup ---
@@ -794,11 +793,10 @@ function rotateAroundY(p, ang) {
 
 const nextFrame = () => new Promise(r => setTimeout(r, 0));
 
-// Convert primitives to metaball contributions using MarchingCubes.addBall,
-// then perturb the resulting scalar field with 3D noise for a wrinkled,
-// coral-like surface. Capsules are sampled as chains of balls along their
-// axis — less efficient than a true capsule field but keeps us on the
-// battle-tested addBall path.
+// Build the sculpture as DISCRETE geometry: every primitive (ball, strut,
+// torus, polyhedron) becomes its own BufferGeometry and the lot is merged.
+// This means fertility / generations / recursion add real surface area
+// linearly, instead of fusing into one bigger blob like metaballs did.
 async function buildSculptureAsync(params, onProgress) {
   const seed = params.seed;
   const rng = mulberry32(seed + 999);
@@ -806,202 +804,145 @@ async function buildSculptureAsync(params, onProgress) {
 
   onProgress(0.05); await nextFrame();
 
-  const prims = grow(params, rng);
+  let prims = grow(params, rng);
 
-  onProgress(0.12); await nextFrame();
+  onProgress(0.15); await nextFrame();
 
-  const res = params.resolution;
-  const effect = new MarchingCubes(res, material, false, false, 300000);
-  effect.isolation = params.thickness;
-  effect.reset();
-
-  // For an isosurface at `isolation`, a single addBall of `strength` produces
-  // a visible metaball whose normalized radius satisfies
-  //   r² ≈ strength / (isolation + subtract) - ε
-  // So to get visible radius r_vis, pick strength = r_vis² * (iso + subtract).
-  // We pick subtract=14 for moderately tight falloff (distinct bumps that
-  // still merge smoothly where they overlap into one connected mass).
-  const subtract = 14;
-  const iso = params.thickness;
-  // Lower floor so very small bumps (size ~0.01) actually render small
-  // instead of clamping to a uniform minimum size.
-  const strengthFor = (r_vis, weight) =>
-    Math.max(0.012, r_vis * r_vis * (iso + subtract) * weight);
-
-  // Pass 1: additive primitives (balls + capsules) build the positive mass.
-  for (const p of prims) {
-    if (p.type === 'ball') {
-      effect.addBall(p.x, p.y, p.z, strengthFor(p.size, p.weight), subtract);
-    } else if (p.type === 'capsule') {
-      const dx = p.x2 - p.x1, dy = p.y2 - p.y1, dz = p.z2 - p.z1;
-      const len = Math.hypot(dx, dy, dz);
-      const steps = Math.max(2, Math.ceil(len / Math.max(0.015, p.size * 1.2)));
-      const stepStrength = strengthFor(p.size, p.weight * 0.9);
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        effect.addBall(p.x1 + dx * t, p.y1 + dy * t, p.z1 + dz * t, stepStrength, subtract);
-      }
+  // Antiballs define exclusion zones: filter out any primitive whose center
+  // falls inside one. Gives negative space without CSG.
+  const antiballs = prims.filter(p => p.type === 'antiball');
+  const center = (p) => p.type === 'capsule'
+    ? { x: (p.x1 + p.x2) / 2, y: (p.y1 + p.y2) / 2, z: (p.z1 + p.z2) / 2 }
+    : { x: p.x, y: p.y, z: p.z };
+  prims = prims.filter(p => {
+    if (p.type === 'antiball') return false;
+    const c = center(p);
+    for (const ab of antiballs) {
+      const d = Math.hypot(c.x - ab.x, c.y - ab.y, c.z - ab.z);
+      if (d < ab.size * 0.85) return false;
     }
-  }
+    return true;
+  });
 
-  // Pass 2: antiballs — negative-strength contributions that punch real
-  // holes through the surface. Done after positive mass so they subtract
-  // from what was built.
-  for (const p of prims) {
-    if (p.type === 'antiball') {
-      effect.addBall(p.x, p.y, p.z, -strengthFor(p.size, p.weight * 1.3), subtract);
-    }
-  }
+  onProgress(0.25); await nextFrame();
 
-  onProgress(0.55); await nextFrame();
-
-  // Multi-octave noise perturbation: a coarse wavy layer + a fine ridge
-  // layer (abs noise, which creates sharp coral-like peaks) + a very fine
-  // pepper layer. Amplitudes all relative to isolation so shapes stay
-  // watertight under perturbation.
-  if (params.noise > 0) {
-    const field = effect.field;
-    const size = effect.size;
-    const size2 = size * size;
-    const f1 = 2.5 + params.noise * 8;
-    const f2 = f1 * 2.7;
-    const f3 = f1 * 6.1;
-    const amp = params.noise * iso * 0.55;
-    const loMask = iso * 0.4;
-    const hiMask = iso * 2.2;
-    for (let z = 0; z < size; z++) {
-      const z1 = z / size * f1, z2 = z / size * f2, z3 = z / size * f3;
-      for (let y = 0; y < size; y++) {
-        const y1 = y / size * f1, y2 = y / size * f2, y3 = y / size * f3;
-        for (let x = 0; x < size; x++) {
-          const i = z * size2 + y * size + x;
-          const v = field[i];
-          if (v > loMask && v < hiMask) {
-            const x1 = x / size * f1, x2 = x / size * f2, x3 = x / size * f3;
-            // Coarse low-freq wave.
-            const n1 = noise3d(x1, y1, z1) - 0.5;
-            // Mid-freq ridged noise for coral-like spines.
-            const r = 1 - Math.abs(noise3d(x2, y2, z2) * 2 - 1);
-            const n2 = (r - 0.5);
-            // High-freq pepper/grit.
-            const n3 = noise3d(x3, y3, z3) - 0.5;
-            field[i] += (n1 * 0.6 + n2 * 0.55 + n3 * 0.35) * amp;
-          }
-        }
-      }
-    }
-  }
-
-  // Seal the grid boundary: force the field to well below isolation on the
-  // outer shell of cells so MarchingCubes always generates a closed surface
-  // even where a primitive might have extended toward the edge. This is
-  // what makes the mesh watertight.
-  {
-    const field = effect.field;
-    const size = effect.size;
-    const size2 = size * size;
-    const sealVal = -subtract; // far below isolation
-    // Two-cell-thick shell for extra safety with noise perturbations.
-    for (let shell = 0; shell < 2; shell++) {
-      const lo = shell, hi = size - 1 - shell;
-      for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-          field[lo * size2 + y * size + x] = sealVal;
-          field[hi * size2 + y * size + x] = sealVal;
-        }
-      }
-      for (let z = 0; z < size; z++) {
-        for (let x = 0; x < size; x++) {
-          field[z * size2 + lo * size + x] = sealVal;
-          field[z * size2 + hi * size + x] = sealVal;
-        }
-      }
-      for (let z = 0; z < size; z++) {
-        for (let y = 0; y < size; y++) {
-          field[z * size2 + y * size + lo] = sealVal;
-          field[z * size2 + y * size + hi] = sealVal;
-        }
-      }
-    }
-  }
-
-  onProgress(0.72); await nextFrame();
-
-  effect.update();
-  onProgress(0.88); await nextFrame();
-
-  // Snapshot dynamic MarchingCubes buffers into a static BufferGeometry.
-  const numVerts = effect.count;
-  if (numVerts === 0) throw new Error('empty surface (try more thickness)');
-  const srcPos = effect.geometry.attributes.position.array;
-  const srcNor = effect.geometry.attributes.normal.array;
-  const floats = numVerts * 3;
-  const pos = new Float32Array(floats);
-  const nor = new Float32Array(floats);
-  for (let i = 0; i < floats; i++) { pos[i] = srcPos[i]; nor[i] = srcNor[i]; }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-
-  // MarchingCubes outputs in [-1, 1]. Scale to requested mm size.
   const scale = params.size / 2;
-  geo.scale(scale, scale, scale);
-
-  if (effect.geometry) effect.geometry.dispose();
-
-  // Stage 13: hard-edged polyhedra and interlocking tori as separate
-  // closed shells, merged into the same BufferGeometry. Slicers union all
-  // shells in an STL into one printable solid, so the result is still a
-  // single 3D-printable object even though it has multiple closed surfaces.
-  // Both sources must be non-indexed for mergeGeometries to accept them.
-  const extras = [];
-  // Field coords were [0,1] mapped to mesh space [-1,1] then scaled to mm.
-  // So a primitive at field (px, py, pz) lands at world (px*2-1)*scale.
   const toWorld = (v) => (v * 2 - 1) * scale;
+
+  // Resolution controls how many polygons each primitive is tessellated into.
+  const resF = Math.max(0.55, params.resolution / 80);
+  // Surface-noise: per-vertex displacement along the normal. Amplitude is a
+  // fraction of the primitive's own radius so detail scales with feature.
+  const noiseOn = params.noise > 0.001;
+  const noiseAmp = params.noise * 0.35;
+
+  function displace(g, radius) {
+    if (!noiseOn) return;
+    const pos = g.attributes.position;
+    const nor = g.attributes.normal;
+    // 3 cycles of noise across the primitive radius.
+    const k = 3 / Math.max(0.001, radius);
+    const amp = radius * noiseAmp;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const nx = nor.getX(i), ny = nor.getY(i), nz = nor.getZ(i);
+      const n1 = noise3d(x * k + 11, y * k + 11, z * k + 11) - 0.5;
+      // Ridged mid-freq layer for sharper coral-ish peaks.
+      const rn = noise3d(x * k * 2.3, y * k * 2.3, z * k * 2.3);
+      const n2 = (1 - Math.abs(rn * 2 - 1)) - 0.5;
+      const d = (n1 * 0.7 + n2 * 0.5) * amp;
+      pos.setXYZ(i, x + nx * d, y + ny * d, z + nz * d);
+    }
+    pos.needsUpdate = true;
+    g.computeVertexNormals(); // rebuild normals for displaced surface
+  }
+
+  const pieces = [];
+  const total = prims.length || 1;
+  let processed = 0;
+
   for (const p of prims) {
-    if (p.type === 'box') {
-      const s = p.size * 2 * scale;
-      const g = new THREE.BoxGeometry(s, s, s).toNonIndexed();
-      const e = new THREE.Euler(p.rx, p.ry, p.rz);
-      g.applyQuaternion(new THREE.Quaternion().setFromEuler(e));
+    let g = null;
+
+    if (p.type === 'ball') {
+      const r = p.size * 2 * scale * params.thickness;
+      if (r < 0.2) { processed++; continue; }
+      const w = Math.max(6, Math.round(10 * resF));
+      const h = Math.max(5, Math.round(w * 0.7));
+      g = new THREE.SphereGeometry(r, w, h).toNonIndexed();
+      g.deleteAttribute('uv');
       g.translate(toWorld(p.x), toWorld(p.y), toWorld(p.z));
-      g.computeVertexNormals();
-      g.deleteAttribute('uv'); // MC output has only position+normal
-      extras.push(g);
-    } else if (p.type === 'octa') {
-      const s = p.size * 2 * scale;
-      const g = new THREE.OctahedronGeometry(s, 0).toNonIndexed();
-      const e = new THREE.Euler(p.rx, p.ry, p.rz);
-      g.applyQuaternion(new THREE.Quaternion().setFromEuler(e));
-      g.translate(toWorld(p.x), toWorld(p.y), toWorld(p.z));
-      g.computeVertexNormals();
-      g.deleteAttribute('uv'); // MC output has only position+normal
-      extras.push(g);
+      displace(g, r);
+
+    } else if (p.type === 'capsule') {
+      const x1 = toWorld(p.x1), y1 = toWorld(p.y1), z1 = toWorld(p.z1);
+      const x2 = toWorld(p.x2), y2 = toWorld(p.y2), z2 = toWorld(p.z2);
+      const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
+      const len = Math.hypot(dx, dy, dz);
+      const r = p.size * 2 * scale * params.thickness;
+      if (len < 0.1 || r < 0.15) { processed++; continue; }
+      const segs = Math.max(5, Math.round(8 * resF));
+      g = new THREE.CylinderGeometry(r, r, len, segs, 1, false).toNonIndexed();
+      g.deleteAttribute('uv');
+      // Default cylinder axis is +Y; rotate to align with (dx, dy, dz).
+      const dir = new THREE.Vector3(dx / len, dy / len, dz / len);
+      const up = new THREE.Vector3(0, 1, 0);
+      const dot = up.dot(dir);
+      if (Math.abs(dot) < 0.9999) {
+        const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
+        g.applyQuaternion(q);
+      } else if (dot < 0) {
+        g.rotateX(Math.PI);
+      }
+      g.translate((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
+      displace(g, r);
+
     } else if (p.type === 'torus') {
       const major = p.major * 2 * scale;
-      const minor = p.minor * 2 * scale;
-      const g = new THREE.TorusGeometry(major, minor, 10, 28).toNonIndexed();
-      // Default torus axis is +Z; rotate so axis aligns with (ax, ay, az).
+      const minor = p.minor * 2 * scale * params.thickness;
+      if (minor < 0.15 || major < 0.3) { processed++; continue; }
+      const big = Math.max(16, Math.round(28 * resF));
+      const sml = Math.max(6, Math.round(10 * resF));
+      g = new THREE.TorusGeometry(major, minor, sml, big).toNonIndexed();
+      g.deleteAttribute('uv');
       const target = new THREE.Vector3(p.ax, p.ay, p.az).normalize();
       const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), target);
       g.applyQuaternion(q);
       g.translate(toWorld(p.x), toWorld(p.y), toWorld(p.z));
-      g.computeVertexNormals();
-      g.deleteAttribute('uv'); // MC output has only position+normal
-      extras.push(g);
+      displace(g, minor);
+
+    } else if (p.type === 'box') {
+      const s = p.size * 2 * scale;
+      g = new THREE.BoxGeometry(s, s, s).toNonIndexed();
+      g.deleteAttribute('uv');
+      const e = new THREE.Euler(p.rx, p.ry, p.rz);
+      g.applyQuaternion(new THREE.Quaternion().setFromEuler(e));
+      g.translate(toWorld(p.x), toWorld(p.y), toWorld(p.z));
+      // Intentionally NOT displaced — keeps crisp hard edges.
+
+    } else if (p.type === 'octa') {
+      const s = p.size * 2 * scale;
+      g = new THREE.OctahedronGeometry(s, 0).toNonIndexed();
+      g.deleteAttribute('uv');
+      const e = new THREE.Euler(p.rx, p.ry, p.rz);
+      g.applyQuaternion(new THREE.Quaternion().setFromEuler(e));
+      g.translate(toWorld(p.x), toWorld(p.y), toWorld(p.z));
+    }
+
+    if (g) pieces.push(g);
+    processed++;
+    if (processed % 80 === 0) {
+      onProgress(0.25 + (processed / total) * 0.65);
+      await nextFrame();
     }
   }
-  let finalGeo = geo;
-  if (extras.length > 0) {
-    extras.unshift(geo);
-    const merged = mergeGeometries(extras, false);
-    if (merged) {
-      // Dispose intermediates we no longer need.
-      for (const g of extras) if (g !== geo) g.dispose();
-      finalGeo = merged;
-    }
-  }
+
+  onProgress(0.92); await nextFrame();
+
+  if (pieces.length === 0) throw new Error('no geometry generated');
+  const finalGeo = mergeGeometries(pieces, false);
+  if (!finalGeo) throw new Error('merge failed (mixed attributes)');
+  for (const g of pieces) g.dispose();
 
   onProgress(1.0);
   return finalGeo;
@@ -1056,7 +997,8 @@ function readParams() {
     symmetry: parseInt(sliders.sym.value, 10),
     holes: parseFloat(sliders.holes.value) / 100,
     noise: parseFloat(sliders.noise.value) / 100,
-    thickness: 60 + (1 - parseFloat(sliders.thick.value) / 100) * 80,
+    // Primitive-size scale: 0.6× (spindly) to 1.6× (beefy).
+    thickness: 0.6 + parseFloat(sliders.thick.value) / 100,
     resolution: parseInt(sliders.res.value, 10),
     seed: currentSeed,
   };
@@ -1175,7 +1117,7 @@ document.getElementById('reset').addEventListener('click', () => {
   sliders.sym.value = 0;
   sliders.holes.value = 35;
   sliders.noise.value = 55;
-  sliders.thick.value = 35;
+  sliders.thick.value = 40;
   sliders.res.value = 96;
   scheduleRebuild();
 });
