@@ -158,66 +158,61 @@
 <div id="app">
   <aside id="panel">
     <button id="panel-toggle" type="button" aria-label="Toggle controls"></button>
-    <h1>Captive Lattice</h1>
+    <h1>Organismal</h1>
     <div class="sub">
-      An organic tangle of wandering tubes, cross-bridges and knobs, with
-      an optional captive chain threaded through one of the strands. Every
-      piece is fused to the whole or topologically interlocked — nothing
-      floats free, and the base ring keeps it standing on a table.
-      Tap <em>Randomize</em> for a new creature.
-    </div>
-
-    <div class="slider">
-      <div class="row"><label>Height</label><span class="val" id="v-height">120 mm</span></div>
-      <input type="range" id="s-height" min="40" max="220" step="1" value="120" />
-    </div>
-
-    <div class="slider">
-      <div class="row"><label>Radius</label><span class="val" id="v-radius">42 mm</span></div>
-      <input type="range" id="s-radius" min="20" max="80" step="1" value="42" />
-    </div>
-
-    <div class="slider">
-      <div class="row"><label>Wildness</label><span class="val" id="v-twist">420°</span></div>
-      <input type="range" id="s-twist" min="0" max="720" step="5" value="420" />
-    </div>
-
-    <div class="slider">
-      <div class="row"><label>Strands</label><span class="val" id="v-bars">7</span></div>
-      <input type="range" id="s-bars" min="3" max="12" step="1" value="7" />
-    </div>
-
-    <div class="slider">
-      <div class="row"><label>Bar thickness</label><span class="val" id="v-bart">2.2 mm</span></div>
-      <input type="range" id="s-bart" min="10" max="40" step="1" value="22" />
-    </div>
-
-    <div class="slider">
-      <div class="row"><label>Waist pinch</label><span class="val" id="v-pinch">35%</span></div>
-      <input type="range" id="s-pinch" min="0" max="70" step="1" value="35" />
-    </div>
-
-    <div class="slider">
-      <div class="row"><label>Captive chain links</label><span class="val" id="v-links">4</span></div>
-      <input type="range" id="s-links" min="0" max="8" step="1" value="4" />
-    </div>
-
-    <div class="slider">
-      <div class="row"><label>Link thickness</label><span class="val" id="v-linkt">2.6 mm</span></div>
-      <input type="range" id="s-linkt" min="10" max="45" step="1" value="26" />
-    </div>
-
-    <div class="slider">
-      <div class="row"><label>Surface detail</label><span class="val" id="v-detail">Smooth</span></div>
-      <input type="range" id="s-detail" min="8" max="48" step="2" value="24" />
+      A generative sculpture grown from an implicit scalar field and
+      extracted as a single watertight mesh. Branching fractal seeds are
+      tiled with radial symmetry, perturbed by noise, and blended into a
+      continuous surface — watertight, self-supporting, and physically
+      unrealizable by any method other than 3D printing.
     </div>
 
     <div class="actions">
-      <button id="randomize">Randomize</button>
+      <button id="randomize" class="primary">✦ New Creature</button>
       <button id="reset">Reset</button>
     </div>
     <div class="actions">
-      <button id="download" class="primary">Download STL</button>
+      <button id="download">Download STL</button>
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Size</label><span class="val" id="v-size">120 mm</span></div>
+      <input type="range" id="s-size" min="40" max="220" step="1" value="120" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Symmetry</label><span class="val" id="v-sym">5-fold</span></div>
+      <input type="range" id="s-sym" min="1" max="8" step="1" value="5" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Branching depth</label><span class="val" id="v-depth">3</span></div>
+      <input type="range" id="s-depth" min="0" max="5" step="1" value="3" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Branch spread</label><span class="val" id="v-spread">55%</span></div>
+      <input type="range" id="s-spread" min="10" max="95" step="1" value="55" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Chaos</label><span class="val" id="v-chaos">25%</span></div>
+      <input type="range" id="s-chaos" min="0" max="100" step="1" value="25" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Surface noise</label><span class="val" id="v-noise">30%</span></div>
+      <input type="range" id="s-noise" min="0" max="80" step="1" value="30" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Thickness</label><span class="val" id="v-thick">45%</span></div>
+      <input type="range" id="s-thick" min="15" max="75" step="1" value="45" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Resolution</label><span class="val" id="v-res">72</span></div>
+      <input type="range" id="s-res" min="40" max="112" step="4" value="72" />
     </div>
   </aside>
 
@@ -241,7 +236,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
 
 // --- Scene setup ---
 const view = document.getElementById('view');
@@ -299,9 +294,16 @@ const material = new THREE.MeshStandardMaterial({
 let sculptureGroup = new THREE.Group();
 scene.add(sculptureGroup);
 
-// --- Geometry builders ---
+// --- Field-based organism generator ---
+//
+// The sculpture is the zero-crossing of a 3D scalar field built by summing
+// many primitives: metaballs (anisotropic ellipsoids), tapered capsules, and
+// displaced spheres. A recursive "branch" procedure scatters primitives in
+// a 1/N-sized angular sector and marching cubes extracts a single watertight
+// mesh from the field — watertight means printable, and the branching +
+// radial replication + noise yield a look that is organic, fractal, and
+// irreproducible with straight tubes or pipe cleaners.
 
-// Seeded PRNG so a given sculpture is reproducible while sliders tweak it.
 function mulberry32(a) {
   return function() {
     a = (a + 0x6d2b79f5) | 0;
@@ -314,318 +316,339 @@ function mulberry32(a) {
 
 let currentSeed = (Math.random() * 1e9) | 0;
 
-// Smooth pseudo-noise: sum of sines with seeded random phases.
-function makeNoise1D(rng, octaves = 3) {
-  const freqs = [], phases = [], amps = [];
-  let ampSum = 0;
-  for (let i = 0; i < octaves; i++) {
-    freqs.push(1 + i * (1.7 + rng() * 0.6));
-    phases.push(rng() * Math.PI * 2);
-    const a = 1 / (i + 1);
-    amps.push(a);
-    ampSum += a;
-  }
-  return (t) => {
-    let n = 0;
-    for (let i = 0; i < freqs.length; i++) {
-      n += Math.sin(t * Math.PI * 2 * freqs[i] + phases[i]) * amps[i];
-    }
-    return n / ampSum;
+// 3D value noise: hashed lattice with smoothstep interpolation.
+function makeValueNoise(seed) {
+  const rng = mulberry32(seed);
+  const size = 64;
+  const perm = new Float32Array(size * size * size);
+  for (let i = 0; i < perm.length; i++) perm[i] = rng();
+  const hash = (ix, iy, iz) => perm[
+    (((ix & (size - 1)) * size) + (iy & (size - 1))) * size + (iz & (size - 1))
+  ];
+  const smooth = (t) => t * t * (3 - 2 * t);
+  return (x, y, z) => {
+    const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+    const xf = x - xi, yf = y - yi, zf = z - zi;
+    const u = smooth(xf), v = smooth(yf), w = smooth(zf);
+    const c000 = hash(xi, yi, zi), c100 = hash(xi + 1, yi, zi);
+    const c010 = hash(xi, yi + 1, zi), c110 = hash(xi + 1, yi + 1, zi);
+    const c001 = hash(xi, yi, zi + 1), c101 = hash(xi + 1, yi, zi + 1);
+    const c011 = hash(xi, yi + 1, zi + 1), c111 = hash(xi + 1, yi + 1, zi + 1);
+    const x00 = c000 + (c100 - c000) * u;
+    const x10 = c010 + (c110 - c010) * u;
+    const x01 = c001 + (c101 - c001) * u;
+    const x11 = c011 + (c111 - c011) * u;
+    const y0 = x00 + (x10 - x00) * v;
+    const y1 = x01 + (x11 - x01) * v;
+    return y0 + (y1 - y0) * w; // [0,1]
   };
 }
 
-// Build one wandering organic strand running from the bottom ring to the top.
-// Each strand is anchored at both ends to the base/top ring so the whole
-// sculpture is a single connected object.
-function buildOrganicStrand(params, index, seed) {
-  const { height, radius, twistRad, barThickness, pinch, detail, bars, wildness } = params;
-  const rng = mulberry32(seed + index * 1337 + 7);
+// A "seed" is a primitive added to the scalar field. Cylindrical coords so
+// the same primitive can be rotated into each radial sector cheaply.
+// kind: 'ball' | 'capsule'
+// For balls: (r, y) with anisotropy (rx, ry, rz) in local frame.
+// For capsules: (r, y) to (r2, y2), radius.
+function generateSeeds(params, rng, noise3d) {
+  const seeds = [];
 
-  const baseTheta = (index / bars) * Math.PI * 2 + (rng() - 0.5) * 0.35;
-  const twistDir = rng() < 0.5 ? 1 : -1;
-  const twistAmt = twistRad * (0.3 + rng() * 0.9) * twistDir;
-
-  const segments = 36 + Math.floor(rng() * 20);
-  const radiusNoise = makeNoise1D(rng, 3);
-  const thetaNoise = makeNoise1D(rng, 3);
-  const yNoise = makeNoise1D(rng, 2);
-
-  const rAmp = radius * (0.25 + wildness * 0.65);
-  const tAmp = 0.4 + wildness * 1.6;
-  const yAmp = height * 0.04 * wildness;
-
-  const points = [];
-  // Slight random offset of the anchor along the base ring so strands don't
-  // always hit the ring at the same theta — more organic rooting.
-  const anchorJitter = (rng() - 0.5) * 0.25;
-
-  // Allow the strand to exit the central column — go high, cross the middle,
-  // dive low — by adding a big offset path.
-  const excursion = (rng() < 0.5 ? 1 : -1) * radius * (0.15 + wildness * 0.7);
-  const excursionAxis = rng() * Math.PI * 2;
-
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    const envelope = Math.sin(Math.PI * t); // 0 at ends, 1 in middle
-
-    const profile = 0.55 + 0.45 * envelope;
-    const waist = 1 - pinch * Math.sin(Math.PI * t * (1 + rng() * 0.3));
-    let r = radius * profile * waist + radiusNoise(t + rng() * 0.1) * rAmp * envelope;
-    r = Math.max(radius * 0.15, r);
-
-    let theta = baseTheta + twistAmt * t + thetaNoise(t) * tAmp * envelope;
-
-    // Perpendicular excursion: push strand sideways from its circle, so it
-    // can loop through the interior instead of staying on the outer shell.
-    const ex = excursion * envelope;
-    let x = Math.cos(theta) * r + Math.cos(excursionAxis) * ex * thetaNoise(t + 0.3);
-    let z = Math.sin(theta) * r + Math.sin(excursionAxis) * ex * thetaNoise(t + 0.7);
-    let y = -height / 2 + t * height + yNoise(t) * yAmp;
-
-    // Anchor endpoints exactly on the ring so tubes fuse to it when printed.
-    if (i === 0) {
-      const aTheta = baseTheta + anchorJitter;
-      x = Math.cos(aTheta) * radius;
-      z = Math.sin(aTheta) * radius;
-      y = -height / 2;
-    }
-    if (i === segments) {
-      const aTheta = baseTheta + twistAmt + (rng() - 0.5) * 0.25;
-      x = Math.cos(aTheta) * radius * (0.75 + rng() * 0.2);
-      z = Math.sin(aTheta) * radius * (0.75 + rng() * 0.2);
-      y = height / 2;
-    }
-
-    points.push(new THREE.Vector3(x, y, z));
+  // Central trunk — always present so everything reaches the core.
+  const trunkSegs = 6;
+  for (let i = 0; i < trunkSegs; i++) {
+    const t = i / (trunkSegs - 1);
+    seeds.push({
+      kind: 'ball',
+      r: 0,
+      theta: 0,
+      y: 0.15 + t * 0.7,
+      size: 0.11 + 0.04 * Math.sin(Math.PI * t),
+      weight: 1.0,
+    });
   }
 
-  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5);
-  const tubularSegments = Math.max(60, segments * 2);
-  const radialSegments = Math.max(6, Math.floor(detail / 4));
-  const thickness = barThickness * (0.85 + rng() * 0.4);
-  return { geo: new THREE.TubeGeometry(curve, tubularSegments, thickness, radialSegments, false), curve };
-}
-
-// Organic closed loop used for the top/bottom "rings" — wavy, irregular,
-// still fully closed so the base is stable on a table.
-function buildOrganicLoop(params, y, seed, subseed) {
-  const { radius, barThickness, detail, pinch } = params;
-  const rng = mulberry32(seed + subseed);
-  const loopNoise = makeNoise1D(rng, 3);
-  const segments = 96;
-  const points = [];
-  const tubeR = barThickness * 1.15;
-  const wobble = radius * 0.12;
-  for (let i = 0; i < segments; i++) {
-    const t = i / segments;
-    const theta = t * Math.PI * 2;
-    const r = radius + loopNoise(t) * wobble;
-    const yy = y + loopNoise(t + 0.5) * radius * 0.05;
-    points.push(new THREE.Vector3(Math.cos(theta) * r, yy, Math.sin(theta) * r));
+  // Base pad for tabletop stability — a wide flat lump near y=0.12.
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    seeds.push({
+      kind: 'ball',
+      r: 0.08 + rng() * 0.05,
+      theta: a,
+      y: 0.10 + rng() * 0.04,
+      size: 0.09 + rng() * 0.03,
+      weight: 0.9,
+      flat: true, // compressed vertically
+    });
   }
-  const curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.5);
-  return new THREE.TubeGeometry(curve, segments * 2, tubeR, Math.max(8, Math.floor(detail / 3)), true);
+
+  // Primary branch seeds — placed inside one angular sector of width (2π/N).
+  // The whole sector will be rotated N times for N-fold symmetry.
+  const sectorWidth = Math.PI * 2 / params.symmetry;
+  const primaryCount = 2 + Math.floor(rng() * 3);
+  const primaries = [];
+  for (let i = 0; i < primaryCount; i++) {
+    const s = {
+      kind: 'ball',
+      r: 0.08 + rng() * 0.14,
+      theta: rng() * sectorWidth,
+      y: 0.25 + rng() * 0.5,
+      size: 0.06 + rng() * 0.06,
+      weight: 0.85 + rng() * 0.25,
+    };
+    seeds.push(s);
+    primaries.push(s);
+  }
+
+  // Recursive fractal branching from each primary seed.
+  function branch(parent, depth, maxDepth) {
+    if (depth >= maxDepth) return;
+    const children = 2 + Math.floor(rng() * 2);
+    const scale = Math.pow(0.72, depth + 1);
+    const spread = params.spread * 0.35;
+    for (let i = 0; i < children; i++) {
+      // Offset the child outward and up/down with random angular perturbation.
+      const dTheta = (rng() - 0.5) * spread;
+      const dR = 0.04 + rng() * 0.12 * scale;
+      const dY = (rng() - 0.5) * 0.22 * scale + 0.02;
+      // Capsule connecting parent to child — guarantees connectivity.
+      const child = {
+        kind: 'ball',
+        r: Math.max(0.02, parent.r + dR),
+        theta: parent.theta + dTheta,
+        y: Math.max(0.1, Math.min(0.92, parent.y + dY)),
+        size: Math.max(0.025, parent.size * (0.55 + rng() * 0.3)),
+        weight: parent.weight * 0.85,
+      };
+      seeds.push({
+        kind: 'capsule',
+        r1: parent.r, theta1: parent.theta, y1: parent.y,
+        r2: child.r, theta2: child.theta, y2: child.y,
+        size: Math.max(0.015, parent.size * 0.55),
+        weight: parent.weight * 0.8,
+      });
+      seeds.push(child);
+      // Rosette: occasional cluster of tiny spheres at branch tip.
+      if (depth === maxDepth - 1 && rng() < 0.5) {
+        const petals = 4 + Math.floor(rng() * 4);
+        for (let p = 0; p < petals; p++) {
+          const pa = (p / petals) * Math.PI * 2 + rng() * 0.3;
+          const pr = child.size * 1.2;
+          seeds.push({
+            kind: 'ball',
+            r: child.r + Math.cos(pa) * pr * 0.6,
+            theta: child.theta + Math.sin(pa) * pr * 3 / Math.max(0.01, child.r),
+            y: child.y + Math.sin(pa + 1.2) * pr * 0.6,
+            size: child.size * 0.45,
+            weight: child.weight * 0.8,
+          });
+        }
+      }
+      branch(child, depth + 1, maxDepth);
+    }
+  }
+
+  for (const p of primaries) branch(p, 0, params.depth);
+
+  // Chaos: a small number of asymmetric seeds that live OUTSIDE the sector
+  // replication — these break perfect symmetry.
+  const chaosCount = Math.floor(params.chaos * 16);
+  for (let i = 0; i < chaosCount; i++) {
+    seeds.push({
+      kind: 'ball',
+      r: 0.05 + rng() * 0.25,
+      theta: rng() * Math.PI * 2,
+      y: 0.18 + rng() * 0.7,
+      size: 0.03 + rng() * 0.06,
+      weight: 0.4 + rng() * 0.5,
+      asymmetric: true,
+    });
+  }
+
+  return seeds;
 }
 
-// A curved tube bridging two points on two different strands — creates
-// cross-connections so the mesh feels netlike instead of a series of parallel
-// ribs. Bridges physically intersect both strands, so they fuse when printed.
-function buildBridge(curveA, tA, curveB, tB, params, seed) {
-  const { barThickness, detail } = params;
-  const rng = mulberry32(seed);
-  const pA = curveA.getPoint(tA);
-  const pB = curveB.getPoint(tB);
-  const mid = pA.clone().lerp(pB, 0.5);
-  // Offset mid perpendicular for an arc.
-  const away = new THREE.Vector3(mid.x, 0, mid.z).normalize();
-  const sign = rng() < 0.5 ? 1 : -1;
-  mid.addScaledVector(away, sign * pA.distanceTo(pB) * (0.15 + rng() * 0.2));
-  mid.y += (rng() - 0.5) * pA.distanceTo(pB) * 0.25;
-  const curve = new THREE.CatmullRomCurve3([pA, mid, pB], false, 'catmullrom', 0.5);
-  const thickness = barThickness * (0.55 + rng() * 0.35);
-  return new THREE.TubeGeometry(curve, 24, thickness, Math.max(6, Math.floor(detail / 3)), false);
-}
-
-// A knob / bulb fused to a strand at a given point — adds organic detail.
-// Use SphereGeometry (indexed) so it merges cleanly with TubeGeometry /
-// TorusGeometry; IcosahedronGeometry is non-indexed and breaks the merge.
-function buildBulb(point, radius, detail) {
-  const w = Math.max(10, Math.floor(detail / 2));
-  const h = Math.max(8, Math.floor(w * 0.75));
-  const g = new THREE.SphereGeometry(radius, w, h);
-  g.translate(point.x, point.y, point.z);
-  return g;
-}
-
-// Build a torus oriented so a given strand tangent passes through its hole —
-// the ring is threaded ON the strand and cannot come off.
-function ringAroundStrand(curve, tAt, majorR, minorR, detail) {
-  const p = curve.getPoint(tAt);
-  const tan = curve.getTangent(tAt).normalize();
-  const geo = new THREE.TorusGeometry(majorR, minorR, Math.max(8, Math.floor(detail / 3)), Math.max(28, detail * 2));
-  // Default torus axis is +Z; rotate so axis aligns with the strand tangent.
-  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), tan);
-  geo.applyQuaternion(q);
-  geo.translate(p.x, p.y, p.z);
-  return geo;
-}
-
-// A ring that passes through an existing ring (classic chain link).
-// Place the new ring centered on a point on the old ring's circle, with
-// axis tangent to that circle (so the old ring's body passes through the
-// new ring's hole).
-function ringLinkedTo(prev, majorR, minorR, detail, angle) {
-  // prev = { center, axis (Vec3), major, minor }
-  // Pick a point on prev's circle at `angle` around its axis.
-  const u = new THREE.Vector3(1, 0, 0);
-  if (Math.abs(prev.axis.dot(u)) > 0.9) u.set(0, 1, 0);
-  const basisA = new THREE.Vector3().crossVectors(prev.axis, u).normalize();
-  const basisB = new THREE.Vector3().crossVectors(prev.axis, basisA).normalize();
-  const pt = prev.center.clone()
-    .addScaledVector(basisA, Math.cos(angle) * prev.major)
-    .addScaledVector(basisB, Math.sin(angle) * prev.major);
-  // New ring axis is tangent to prev's circle at that point.
-  const tan = basisA.clone().multiplyScalar(-Math.sin(angle))
-    .addScaledVector(basisB, Math.cos(angle)).normalize();
-  const geo = new THREE.TorusGeometry(majorR, minorR, Math.max(8, Math.floor(detail / 3)), Math.max(28, detail * 2));
-  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), tan);
-  geo.applyQuaternion(q);
-  geo.translate(pt.x, pt.y, pt.z);
-  return { geo, center: pt, axis: tan, major: majorR, minor: minorR };
+// Convert seeds to field primitives laid out in 3D with N-fold replication.
+function seedsToPrimitives(seeds, params) {
+  const N = params.symmetry;
+  const prims = [];
+  for (const s of seeds) {
+    const copies = s.asymmetric ? 1 : N;
+    for (let n = 0; n < copies; n++) {
+      const rotation = (n / N) * Math.PI * 2;
+      if (s.kind === 'ball') {
+        const theta = s.theta + rotation;
+        prims.push({
+          type: 'ball',
+          x: 0.5 + Math.cos(theta) * s.r,
+          y: s.y,
+          z: 0.5 + Math.sin(theta) * s.r,
+          size: s.size,
+          flat: !!s.flat,
+          weight: s.weight,
+        });
+      } else if (s.kind === 'capsule') {
+        const t1 = s.theta1 + rotation;
+        const t2 = s.theta2 + rotation;
+        prims.push({
+          type: 'capsule',
+          x1: 0.5 + Math.cos(t1) * s.r1, y1: s.y1, z1: 0.5 + Math.sin(t1) * s.r1,
+          x2: 0.5 + Math.cos(t2) * s.r2, y2: s.y2, z2: 0.5 + Math.sin(t2) * s.r2,
+          size: s.size,
+          weight: s.weight,
+        });
+      }
+    }
+  }
+  return prims;
 }
 
 const nextFrame = () => new Promise(r => setTimeout(r, 0));
 
+// Convert primitives to metaball contributions using MarchingCubes.addBall,
+// then perturb the resulting scalar field with 3D noise for a wrinkled,
+// coral-like surface. Capsules are sampled as chains of balls along their
+// axis — less efficient than a true capsule field but keeps us on the
+// battle-tested addBall path.
 async function buildSculptureAsync(params, onProgress) {
   const seed = params.seed;
   const rng = mulberry32(seed + 999);
-  const geos = [];
-  const strandCurves = [];
+  const noise3d = makeValueNoise(seed + 1234);
 
-  const bridgeCount = Math.max(2, Math.floor(params.bars * 0.8 + rng() * 3));
-  const bulbCount = Math.floor(params.bars * 1.2 + rng() * 4);
-  const totalSteps = params.bars + 2 + bridgeCount + bulbCount + Math.max(0, params.linkCount) + 1;
-  let done = 0;
-  const tick = async () => {
-    done++;
-    onProgress(done / totalSteps);
-    await nextFrame();
-  };
+  onProgress(0.05); await nextFrame();
 
-  for (let i = 0; i < params.bars; i++) {
-    const s = buildOrganicStrand(params, i, seed);
-    geos.push(s.geo);
-    strandCurves.push(s.curve);
-    await tick();
-  }
+  const seeds = generateSeeds(params, rng, noise3d);
+  const prims = seedsToPrimitives(seeds, params);
 
-  geos.push(buildOrganicLoop(params, -params.height / 2, seed, 1));
-  await tick();
-  geos.push(buildOrganicLoop(params, params.height / 2, seed, 2));
-  await tick();
+  onProgress(0.12); await nextFrame();
 
-  for (let i = 0; i < bridgeCount; i++) {
-    const a = Math.floor(rng() * strandCurves.length);
-    let b = Math.floor(rng() * strandCurves.length);
-    if (b === a) b = (a + 1) % strandCurves.length;
-    const tA = 0.2 + rng() * 0.6;
-    const tB = Math.min(0.85, Math.max(0.15, tA + (rng() - 0.5) * 0.2));
-    geos.push(buildBridge(strandCurves[a], tA, strandCurves[b], tB, params, seed + i * 31));
-    await tick();
-  }
+  const res = params.resolution;
+  const effect = new MarchingCubes(res, material, false, false, 300000);
+  effect.isolation = params.thickness;
+  effect.reset();
 
-  for (let i = 0; i < bulbCount; i++) {
-    const c = strandCurves[Math.floor(rng() * strandCurves.length)];
-    const t = 0.1 + rng() * 0.8;
-    const p = c.getPoint(t);
-    const r = params.barThickness * (1.2 + rng() * 1.3);
-    geos.push(buildBulb(p, r, params.detail));
-    await tick();
-  }
-
-  if (params.linkCount > 0) {
-    const hostIdx = Math.floor(rng() * strandCurves.length);
-    const host = strandCurves[hostIdx];
-    const tHost = 0.35 + rng() * 0.3;
-    const minor = params.linkThickness * 0.9;
-    const major = Math.max(
-      params.barThickness * 3 + minor * 2,
-      Math.min(params.radius * 0.4, params.height / (params.linkCount + 2))
-    );
-    geos.push(ringAroundStrand(host, tHost, major, minor, params.detail));
-    await tick();
-    const hostPt = host.getPoint(tHost);
-    const hostTan = host.getTangent(tHost).normalize();
-    let prev = { center: hostPt, axis: hostTan, major, minor };
-    for (let i = 1; i < params.linkCount; i++) {
-      const angle = rng() * Math.PI * 2;
-      const next = ringLinkedTo(prev, major * (0.85 + rng() * 0.25), minor, params.detail, angle);
-      geos.push(next.geo);
-      prev = next;
-      await tick();
+  const subtract = 12;
+  for (const p of prims) {
+    if (p.type === 'ball') {
+      // Metaball strength: tuned so p.size (≈0.03–0.15 in [0,1] coords) gives
+      // visible blobs without blowing out the whole field.
+      const strength = Math.max(0.25, p.size * p.size * 90 * p.weight);
+      effect.addBall(p.x, p.y, p.z, strength, subtract);
+    } else if (p.type === 'capsule') {
+      const dx = p.x2 - p.x1, dy = p.y2 - p.y1, dz = p.z2 - p.z1;
+      const len = Math.hypot(dx, dy, dz);
+      const steps = Math.max(3, Math.ceil(len * res * 0.5));
+      const strength = Math.max(0.2, p.size * p.size * 65 * p.weight);
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        effect.addBall(p.x1 + dx * t, p.y1 + dy * t, p.z1 + dz * t, strength, subtract);
+      }
     }
   }
 
-  const merged = mergeGeometries(geos, false);
-  await tick();
-  if (!merged) throw new Error('merge failed (inconsistent attributes)');
-  return merged;
+  onProgress(0.55); await nextFrame();
+
+  // Noise perturbation: walk only through cells with non-trivial field
+  // so we don't pay for empty space. Indexed z * size² + y * size + x.
+  if (params.noise > 0) {
+    const field = effect.field;
+    const size = effect.size;
+    const size2 = size * size;
+    const freq = 2.5 + params.noise * 9;
+    const amp = params.noise * 18;
+    for (let z = 0; z < size; z++) {
+      const nz = z / size * freq;
+      for (let y = 0; y < size; y++) {
+        const ny = y / size * freq;
+        for (let x = 0; x < size; x++) {
+          const i = z * size2 + y * size + x;
+          const v = field[i];
+          if (v > 0.3 && v < params.thickness * 6) {
+            const nx = x / size * freq;
+            const n = noise3d(nx, ny, nz) - 0.5;
+            const n2 = noise3d(nx * 2.3, ny * 2.3, nz * 2.3) - 0.5;
+            field[i] += (n + n2 * 0.4) * amp;
+          }
+        }
+      }
+    }
+  }
+
+  onProgress(0.72); await nextFrame();
+
+  effect.update();
+  onProgress(0.88); await nextFrame();
+
+  // Snapshot dynamic MarchingCubes buffers into a static BufferGeometry.
+  const numVerts = effect.count;
+  if (numVerts === 0) throw new Error('empty surface (try more thickness)');
+  const srcPos = effect.geometry.attributes.position.array;
+  const srcNor = effect.geometry.attributes.normal.array;
+  const floats = numVerts * 3;
+  const pos = new Float32Array(floats);
+  const nor = new Float32Array(floats);
+  for (let i = 0; i < floats; i++) { pos[i] = srcPos[i]; nor[i] = srcNor[i]; }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+
+  // MarchingCubes outputs in [-1, 1]. Scale to requested mm size.
+  const scale = params.size / 2;
+  geo.scale(scale, scale, scale);
+
+  if (effect.geometry) effect.geometry.dispose();
+  onProgress(1.0);
+  return geo;
 }
 
 // --- Wiring sliders ---
 
 const sliders = {
-  height: document.getElementById('s-height'),
-  radius: document.getElementById('s-radius'),
-  twist: document.getElementById('s-twist'),
-  bars: document.getElementById('s-bars'),
-  bart: document.getElementById('s-bart'),
-  pinch: document.getElementById('s-pinch'),
-  links: document.getElementById('s-links'),
-  linkt: document.getElementById('s-linkt'),
-  detail: document.getElementById('s-detail'),
+  size: document.getElementById('s-size'),
+  sym: document.getElementById('s-sym'),
+  depth: document.getElementById('s-depth'),
+  spread: document.getElementById('s-spread'),
+  chaos: document.getElementById('s-chaos'),
+  noise: document.getElementById('s-noise'),
+  thick: document.getElementById('s-thick'),
+  res: document.getElementById('s-res'),
 };
 const labels = {
-  height: document.getElementById('v-height'),
-  radius: document.getElementById('v-radius'),
-  twist: document.getElementById('v-twist'),
-  bars: document.getElementById('v-bars'),
-  bart: document.getElementById('v-bart'),
-  pinch: document.getElementById('v-pinch'),
-  links: document.getElementById('v-links'),
-  linkt: document.getElementById('v-linkt'),
-  detail: document.getElementById('v-detail'),
+  size: document.getElementById('v-size'),
+  sym: document.getElementById('v-sym'),
+  depth: document.getElementById('v-depth'),
+  spread: document.getElementById('v-spread'),
+  chaos: document.getElementById('v-chaos'),
+  noise: document.getElementById('v-noise'),
+  thick: document.getElementById('v-thick'),
+  res: document.getElementById('v-res'),
 };
 
 function readParams() {
-  const detail = parseInt(sliders.detail.value, 10);
-  const twistDeg = parseFloat(sliders.twist.value);
   return {
-    height: parseFloat(sliders.height.value),
-    radius: parseFloat(sliders.radius.value),
-    twistRad: twistDeg * Math.PI / 180,
-    wildness: Math.min(1, twistDeg / 720), // reuse twist slider as "wildness"
-    bars: parseInt(sliders.bars.value, 10),
-    barThickness: parseFloat(sliders.bart.value) / 10,
-    pinch: parseFloat(sliders.pinch.value) / 100,
-    linkCount: parseInt(sliders.links.value, 10),
-    linkThickness: parseFloat(sliders.linkt.value) / 10,
-    detail,
+    size: parseFloat(sliders.size.value),
+    symmetry: parseInt(sliders.sym.value, 10),
+    depth: parseInt(sliders.depth.value, 10),
+    spread: parseFloat(sliders.spread.value) / 100,
+    chaos: parseFloat(sliders.chaos.value) / 100,
+    noise: parseFloat(sliders.noise.value) / 100,
+    // MarchingCubes isolation — higher = thinner surface. Map slider to a
+    // useful range (roughly 3.0 thick → 12.0 thin).
+    thickness: 3 + (1 - parseFloat(sliders.thick.value) / 100) * 10,
+    resolution: parseInt(sliders.res.value, 10),
     seed: currentSeed,
   };
 }
 
 function updateLabels() {
-  labels.height.textContent = `${sliders.height.value} mm`;
-  labels.radius.textContent = `${sliders.radius.value} mm`;
-  labels.twist.textContent = `${sliders.twist.value}°`;
-  labels.bars.textContent = sliders.bars.value;
-  labels.bart.textContent = `${(sliders.bart.value / 10).toFixed(1)} mm`;
-  labels.pinch.textContent = `${sliders.pinch.value}%`;
-  labels.links.textContent = sliders.links.value;
-  labels.linkt.textContent = `${(sliders.linkt.value / 10).toFixed(1)} mm`;
-  const d = parseInt(sliders.detail.value, 10);
-  labels.detail.textContent = d < 16 ? 'Faceted' : d < 32 ? 'Smooth' : 'Ultra';
+  labels.size.textContent = `${sliders.size.value} mm`;
+  const n = parseInt(sliders.sym.value, 10);
+  labels.sym.textContent = n === 1 ? 'asymmetric' : `${n}-fold`;
+  labels.depth.textContent = sliders.depth.value;
+  labels.spread.textContent = `${sliders.spread.value}%`;
+  labels.chaos.textContent = `${sliders.chaos.value}%`;
+  labels.noise.textContent = `${sliders.noise.value}%`;
+  labels.thick.textContent = `${sliders.thick.value}%`;
+  labels.res.textContent = sliders.res.value;
 }
 
 let rebuildTimer = null;
@@ -661,7 +684,6 @@ async function rebuild() {
     });
     if (myToken !== buildToken) { geo.dispose(); return; }
 
-    geo.computeVertexNormals();
     currentGeometry = geo;
 
     const mesh = new THREE.Mesh(geo, material);
@@ -707,15 +729,14 @@ for (const k of Object.keys(sliders)) {
 
 document.getElementById('reset').addEventListener('click', () => {
   currentSeed = 424242;
-  sliders.height.value = 140;
-  sliders.radius.value = 48;
-  sliders.twist.value = 420;
-  sliders.bars.value = 7;
-  sliders.bart.value = 22;
-  sliders.pinch.value = 30;
-  sliders.links.value = 4;
-  sliders.linkt.value = 26;
-  sliders.detail.value = 24;
+  sliders.size.value = 120;
+  sliders.sym.value = 5;
+  sliders.depth.value = 3;
+  sliders.spread.value = 55;
+  sliders.chaos.value = 25;
+  sliders.noise.value = 30;
+  sliders.thick.value = 45;
+  sliders.res.value = 72;
   scheduleRebuild();
 });
 
@@ -725,14 +746,13 @@ document.getElementById('randomize').addEventListener('click', () => {
     return n;
   };
   currentSeed = (Math.random() * 1e9) | 0;
-  sliders.height.value = rand(90, 200);
-  sliders.radius.value = rand(32, 70);
-  sliders.twist.value = rand(120, 700, 10);
-  sliders.bars.value = rand(5, 11);
-  sliders.bart.value = rand(18, 32);
-  sliders.pinch.value = rand(10, 55);
-  sliders.links.value = rand(2, 6);
-  sliders.linkt.value = rand(20, 36);
+  sliders.size.value = rand(100, 180);
+  sliders.sym.value = rand(1, 8);
+  sliders.depth.value = rand(2, 5);
+  sliders.spread.value = rand(25, 90);
+  sliders.chaos.value = rand(0, 70);
+  sliders.noise.value = rand(10, 65);
+  sliders.thick.value = rand(30, 65);
   scheduleRebuild();
 });
 
@@ -746,7 +766,7 @@ document.getElementById('download').addEventListener('click', () => {
   const a = document.createElement('a');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   a.href = url;
-  a.download = `captive-lattice-${stamp}.stl`;
+  a.download = `organismal-${stamp}.stl`;
   document.body.appendChild(a);
   a.click();
   a.remove();
