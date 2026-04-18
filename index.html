@@ -194,13 +194,13 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Fertility</label><span class="val" id="v-fert">70%</span></div>
-      <input type="range" id="s-fert" min="20" max="100" step="1" value="70" />
+      <div class="row"><label>Fertility</label><span class="val" id="v-fert">85%</span></div>
+      <input type="range" id="s-fert" min="20" max="100" step="1" value="85" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Mutation</label><span class="val" id="v-mut">45%</span></div>
-      <input type="range" id="s-mut" min="0" max="100" step="1" value="45" />
+      <div class="row"><label>Mutation</label><span class="val" id="v-mut">60%</span></div>
+      <input type="range" id="s-mut" min="0" max="100" step="1" value="60" />
     </div>
 
     <div class="slider">
@@ -214,8 +214,8 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Surface noise</label><span class="val" id="v-noise">35%</span></div>
-      <input type="range" id="s-noise" min="0" max="80" step="1" value="35" />
+      <div class="row"><label>Surface noise</label><span class="val" id="v-noise">55%</span></div>
+      <input type="range" id="s-noise" min="0" max="80" step="1" value="55" />
     </div>
 
     <div class="slider">
@@ -429,7 +429,9 @@ function grow(params, rng) {
   const span = hi - lo;
   const clamp = (v) => Math.max(lo, Math.min(hi, v));
 
-  // Stage 1: initial nuclei cloud.
+  // Stage 1: initial nuclei cloud. Nuclei are DELIBERATELY small so that
+  // capsule connections can be proportionally thin; otherwise everything
+  // looks like dumbbells.
   const nodes = [];
   const nuclei = [];
   const nucCount = params.nuclei;
@@ -438,7 +440,7 @@ function grow(params, rng) {
       x: lo + rng() * span,
       y: lo + rng() * span,
       z: lo + rng() * span,
-      size: 0.055 + rng() * 0.04,
+      size: 0.032 + rng() * 0.028,
       dir: randomUnitVec(rng),
       active: true,
       generation: 0,
@@ -452,53 +454,58 @@ function grow(params, rng) {
   // Stage 2: stitch the nuclei together so we always start connected.
   mstConnect(nuclei, prims);
 
-  // Stage 3: multi-generation growth.
+  // Stage 3: multi-generation growth — more prolific, less size decay, so
+  // primitives accumulate across many scales instead of 4 big blobs.
   const mutation = params.mutation;
   const anast = params.anastomosis;
   for (let gen = 1; gen <= params.generations; gen++) {
     const spawned = [];
-    const scale = Math.pow(0.82, gen);
+    const stepScale = Math.pow(0.88, gen);
 
     for (const p of nodes) {
       if (!p.active) continue;
       if (rng() > params.fertility) continue;
-      const children = 1 + Math.floor(rng() * (gen > 2 ? 3 : 2));
+      const children = 2 + Math.floor(rng() * 3); // 2–4 per node
       for (let c = 0; c < children; c++) {
         // Direction: parent's direction blended with pure randomness via mutation.
-        const dir = mixDir(p.dir, randomUnitVec(rng), 0.25 + mutation * 0.75);
-        const step = (0.07 + rng() * 0.09) * scale;
+        const dir = mixDir(p.dir, randomUnitVec(rng), 0.25 + mutation * 0.7);
+        const step = (0.045 + rng() * 0.075) * stepScale;
         const nx = p.x + dir.x * step;
         const ny = p.y + dir.y * step;
         const nz = p.z + dir.z * step;
-        // If out of zone, skip rather than clamp (clamping would fold branches back).
         if (nx < lo || nx > hi || ny < lo || ny > hi || nz < lo || nz > hi) continue;
+        const sizeDecay = 0.72 + rng() * 0.18; // 0.72–0.9: slower decay = richer
         const child = {
           x: nx, y: ny, z: nz,
-          size: Math.max(0.013, p.size * (0.55 + rng() * 0.25)),
+          size: Math.max(0.009, p.size * sizeDecay),
           dir,
           active: true,
           generation: gen,
-          weight: p.weight * 0.92,
+          weight: p.weight * 0.93,
         };
         spawned.push(child);
         prims.push({ type: 'ball', x: child.x, y: child.y, z: child.z, size: child.size, weight: child.weight });
+        // THIN capsule — 30% of the smaller ball, so connections read as
+        // tendrils and stems rather than sausages.
         prims.push({
           type: 'capsule',
           x1: p.x, y1: p.y, z1: p.z, x2: child.x, y2: child.y, z2: child.z,
-          size: Math.min(p.size, child.size) * 0.55,
+          size: Math.max(0.008, Math.min(p.size, child.size) * 0.3),
           weight: p.weight * 0.85,
         });
       }
-      // Sometimes parents deactivate so growth is concentrated at tips.
-      if (rng() < 0.35 + mutation * 0.3) p.active = false;
+      // Most parents stay alive so trees branch densely rather than thin
+      // out into lonely tips.
+      if (rng() < 0.15 + mutation * 0.25) p.active = false;
     }
     nodes.push(...spawned);
 
-    // Stage 4: anastomosis — bridge nearby non-adjacent nodes.
+    // Stage 4: anastomosis — bridge nearby non-adjacent nodes. Thin bridges
+    // give the coral-net look.
     if (anast > 0 && nodes.length > 4) {
-      const bridgeAttempts = Math.floor(anast * 6 * gen);
-      const maxD = 0.12 + anast * 0.08;
-      const minD = 0.025;
+      const bridgeAttempts = Math.floor(anast * 10 * gen);
+      const maxD = 0.1 + anast * 0.09;
+      const minD = 0.02;
       for (let b = 0; b < bridgeAttempts; b++) {
         const a = nodes[Math.floor(rng() * nodes.length)];
         let best = null, bestD = maxD;
@@ -511,7 +518,7 @@ function grow(params, rng) {
           prims.push({
             type: 'capsule',
             x1: a.x, y1: a.y, z1: a.z, x2: best.x, y2: best.y, z2: best.z,
-            size: Math.min(a.size, best.size) * 0.42,
+            size: Math.max(0.007, Math.min(a.size, best.size) * 0.28),
             weight: 0.75,
           });
         }
@@ -519,12 +526,35 @@ function grow(params, rng) {
     }
   }
 
-  // Stage 5: rosettes at a subset of tips — small petals fused to the tip.
+  // Stage 5: surface bumps — many tiny balls scattered around every node,
+  // positioned just outside its metaball surface so they fuse but read as
+  // texture, not structure. This is what gives the piece rich micro-detail
+  // instead of smooth dumbbell skin.
+  const bumpsPerNode = 3 + Math.floor(params.mutation * 6);
+  for (const n of nodes) {
+    const bumps = bumpsPerNode + Math.floor(rng() * 3);
+    for (let i = 0; i < bumps; i++) {
+      const d = randomUnitVec(rng);
+      const off = n.size * (0.65 + rng() * 0.55);
+      const bx = n.x + d.x * off;
+      const by = n.y + d.y * off;
+      const bz = n.z + d.z * off;
+      if (bx < lo || bx > hi || by < lo || by > hi || bz < lo || bz > hi) continue;
+      prims.push({
+        type: 'ball',
+        x: bx, y: by, z: bz,
+        size: 0.009 + rng() * 0.02,
+        weight: 0.45 + rng() * 0.35,
+      });
+    }
+  }
+
+  // Stage 6: rosettes at a subset of tips — larger clusters of petals.
   for (const n of nodes) {
     if (!n.active) continue;
     if (rng() > 0.55) continue;
-    const petals = 3 + Math.floor(rng() * 4);
-    const pr = n.size * 0.9;
+    const petals = 4 + Math.floor(rng() * 5);
+    const pr = n.size * 0.85;
     for (let p = 0; p < petals; p++) {
       const d = randomUnitVec(rng);
       const px = n.x + d.x * pr;
@@ -534,14 +564,42 @@ function grow(params, rng) {
       prims.push({
         type: 'ball',
         x: px, y: py, z: pz,
-        size: n.size * (0.45 + rng() * 0.25),
+        size: n.size * (0.4 + rng() * 0.25),
         weight: n.weight * 0.9,
       });
     }
   }
 
-  // Stage 6: antiballs — negative-strength spheres that carve holes.
-  const holeCount = Math.floor(params.holes * 22);
+  // Stage 7: spike filaments — thin capsule extensions from random nodes,
+  // capped with a tiny ball. Fine, spindly detail that's the opposite of
+  // "bony". Count scales with mutation so the user can dial it in.
+  const spikeCount = Math.floor(6 + params.mutation * 22);
+  for (let s = 0; s < spikeCount; s++) {
+    const tip = nodes[Math.floor(rng() * nodes.length)];
+    const dir = randomUnitVec(rng);
+    const spikeLen = tip.size * (1.5 + rng() * 3);
+    const tx = tip.x + dir.x * spikeLen;
+    const ty = tip.y + dir.y * spikeLen;
+    const tz = tip.z + dir.z * spikeLen;
+    if (tx < lo || tx > hi || ty < lo || ty > hi || tz < lo || tz > hi) continue;
+    const spikeR = Math.max(0.006, tip.size * (0.18 + rng() * 0.15));
+    prims.push({
+      type: 'capsule',
+      x1: tip.x, y1: tip.y, z1: tip.z, x2: tx, y2: ty, z2: tz,
+      size: spikeR,
+      weight: 0.8,
+    });
+    prims.push({
+      type: 'ball',
+      x: tx, y: ty, z: tz,
+      size: spikeR * 1.4,
+      weight: 0.7,
+    });
+  }
+
+  // Stage 8: antiballs — negative-strength spheres that carve holes through
+  // the final mesh.
+  const holeCount = Math.floor(params.holes * 28);
   for (let i = 0; i < holeCount; i++) {
     const host = nodes[Math.floor(rng() * nodes.length)];
     const d = randomUnitVec(rng);
@@ -551,7 +609,7 @@ function grow(params, rng) {
       x: clamp(host.x + d.x * off),
       y: clamp(host.y + d.y * off),
       z: clamp(host.z + d.z * off),
-      size: 0.035 + rng() * 0.045,
+      size: 0.025 + rng() * 0.04,
       weight: 1.0 + rng() * 0.3,
     });
   }
@@ -590,8 +648,10 @@ async function buildSculptureAsync(params, onProgress) {
   // still merge smoothly where they overlap into one connected mass).
   const subtract = 14;
   const iso = params.thickness;
+  // Lower floor so very small bumps (size ~0.01) actually render small
+  // instead of clamping to a uniform minimum size.
   const strengthFor = (r_vis, weight) =>
-    Math.max(0.04, r_vis * r_vis * (iso + subtract) * weight);
+    Math.max(0.012, r_vis * r_vis * (iso + subtract) * weight);
 
   // Pass 1: additive primitives (balls + capsules) build the positive mass.
   for (const p of prims) {
@@ -620,30 +680,37 @@ async function buildSculptureAsync(params, onProgress) {
 
   onProgress(0.55); await nextFrame();
 
-  // Noise perturbation of the field — scaled relative to isolation so it
-  // dimples the surface without punching through it. Only touch cells near
-  // the isosurface (field within ±40% of isolation) to limit cost and keep
-  // the interior solid.
+  // Multi-octave noise perturbation: a coarse wavy layer + a fine ridge
+  // layer (abs noise, which creates sharp coral-like peaks) + a very fine
+  // pepper layer. Amplitudes all relative to isolation so shapes stay
+  // watertight under perturbation.
   if (params.noise > 0) {
     const field = effect.field;
     const size = effect.size;
     const size2 = size * size;
-    const freq = 3 + params.noise * 10;
-    const amp = params.noise * iso * 0.28;
-    const loMask = iso * 0.55;
-    const hiMask = iso * 1.8;
+    const f1 = 2.5 + params.noise * 8;
+    const f2 = f1 * 2.7;
+    const f3 = f1 * 6.1;
+    const amp = params.noise * iso * 0.55;
+    const loMask = iso * 0.4;
+    const hiMask = iso * 2.2;
     for (let z = 0; z < size; z++) {
-      const nz = z / size * freq;
+      const z1 = z / size * f1, z2 = z / size * f2, z3 = z / size * f3;
       for (let y = 0; y < size; y++) {
-        const ny = y / size * freq;
+        const y1 = y / size * f1, y2 = y / size * f2, y3 = y / size * f3;
         for (let x = 0; x < size; x++) {
           const i = z * size2 + y * size + x;
           const v = field[i];
           if (v > loMask && v < hiMask) {
-            const nx = x / size * freq;
-            const n = noise3d(nx, ny, nz) - 0.5;
-            const n2 = noise3d(nx * 2.3, ny * 2.3, nz * 2.3) - 0.5;
-            field[i] += (n + n2 * 0.4) * amp;
+            const x1 = x / size * f1, x2 = x / size * f2, x3 = x / size * f3;
+            // Coarse low-freq wave.
+            const n1 = noise3d(x1, y1, z1) - 0.5;
+            // Mid-freq ridged noise for coral-like spines.
+            const r = 1 - Math.abs(noise3d(x2, y2, z2) * 2 - 1);
+            const n2 = (r - 0.5);
+            // High-freq pepper/grit.
+            const n3 = noise3d(x3, y3, z3) - 0.5;
+            field[i] += (n1 * 0.6 + n2 * 0.55 + n3 * 0.35) * amp;
           }
         }
       }
@@ -848,11 +915,11 @@ document.getElementById('reset').addEventListener('click', () => {
   sliders.size.value = 120;
   sliders.nuc.value = 4;
   sliders.gen.value = 4;
-  sliders.fert.value = 70;
-  sliders.mut.value = 45;
+  sliders.fert.value = 85;
+  sliders.mut.value = 60;
   sliders.cross.value = 35;
   sliders.holes.value = 25;
-  sliders.noise.value = 35;
+  sliders.noise.value = 55;
   sliders.thick.value = 45;
   sliders.res.value = 72;
   scheduleRebuild();
