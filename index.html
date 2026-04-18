@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Captive Lattice — 3D Sculpture Generator</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #14171f;
+    --panel2: #1c2030;
+    --ink: #e8ecf5;
+    --muted: #8a92a6;
+    --accent: #7cf7c4;
+    --accent2: #a78bfa;
+    --border: #262b3a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif; }
+  #app { display: grid; grid-template-columns: 320px 1fr; height: 100vh; }
+  @media (max-width: 800px) { #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } }
+
+  #panel {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 18px 18px 12px;
+    overflow-y: auto;
+  }
+  #panel h1 {
+    margin: 0 0 4px; font-size: 16px; letter-spacing: .3px;
+  }
+  #panel .sub { color: var(--muted); font-size: 12px; margin-bottom: 18px; line-height: 1.5; }
+
+  .slider {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+  .slider .row { display: flex; justify-content: space-between; align-items: baseline; }
+  .slider label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  .slider .val { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--accent); }
+  .slider input[type=range] {
+    width: 100%; margin-top: 8px; accent-color: var(--accent);
+  }
+
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  button {
+    flex: 1;
+    background: linear-gradient(180deg, #2a3147, #1a1f2e);
+    color: var(--ink);
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: transform .05s ease, border-color .15s ease;
+  }
+  button:hover { border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  button.primary {
+    background: linear-gradient(180deg, #1f8a68, #0f5a42);
+    border-color: #1f8a68;
+  }
+  button.primary:hover { border-color: var(--accent); }
+
+  #view { position: relative; background: radial-gradient(ellipse at center, #1a1f2b 0%, #0b0d12 70%); }
+  #hint {
+    position: absolute; bottom: 14px; left: 14px;
+    color: var(--muted); font-size: 12px;
+    background: rgba(0,0,0,.3); padding: 6px 10px; border-radius: 8px;
+    pointer-events: none;
+  }
+  #status {
+    position: absolute; top: 14px; right: 14px;
+    color: var(--muted); font-size: 12px;
+    background: rgba(0,0,0,.3); padding: 6px 10px; border-radius: 8px;
+  }
+  #status .ok { color: var(--accent); }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <h1>Captive Lattice</h1>
+    <div class="sub">
+      A generative sculpture: a twisted outer cage surrounding a free-floating
+      chain of interlocking rings. The chain is enclosed — it cannot be inserted
+      after the fact — which makes the object printable only as a single
+      piece on a 3D printer.
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Height</label><span class="val" id="v-height">120 mm</span></div>
+      <input type="range" id="s-height" min="40" max="220" step="1" value="120" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Radius</label><span class="val" id="v-radius">42 mm</span></div>
+      <input type="range" id="s-radius" min="20" max="80" step="1" value="42" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Cage twist</label><span class="val" id="v-twist">220°</span></div>
+      <input type="range" id="s-twist" min="0" max="720" step="5" value="220" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Cage bars</label><span class="val" id="v-bars">6</span></div>
+      <input type="range" id="s-bars" min="3" max="12" step="1" value="6" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Bar thickness</label><span class="val" id="v-bart">2.2 mm</span></div>
+      <input type="range" id="s-bart" min="10" max="40" step="1" value="22" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Waist pinch</label><span class="val" id="v-pinch">35%</span></div>
+      <input type="range" id="s-pinch" min="0" max="70" step="1" value="35" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Captive chain links</label><span class="val" id="v-links">4</span></div>
+      <input type="range" id="s-links" min="0" max="8" step="1" value="4" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Link thickness</label><span class="val" id="v-linkt">2.6 mm</span></div>
+      <input type="range" id="s-linkt" min="10" max="45" step="1" value="26" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Surface detail</label><span class="val" id="v-detail">Smooth</span></div>
+      <input type="range" id="s-detail" min="8" max="48" step="2" value="24" />
+    </div>
+
+    <div class="actions">
+      <button id="randomize">Randomize</button>
+      <button id="reset">Reset</button>
+    </div>
+    <div class="actions">
+      <button id="download" class="primary">Download STL</button>
+    </div>
+  </aside>
+
+  <main id="view">
+    <div id="hint">Drag to rotate · scroll to zoom · right-drag to pan</div>
+    <div id="status">Ready</div>
+  </main>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// --- Scene setup ---
+const view = document.getElementById('view');
+const status = document.getElementById('status');
+
+const scene = new THREE.Scene();
+scene.background = null;
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+camera.position.set(180, 140, 260);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+view.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+const key = new THREE.DirectionalLight(0xffffff, 1.2);
+key.position.set(200, 300, 180);
+key.castShadow = true;
+key.shadow.mapSize.set(1024, 1024);
+key.shadow.camera.left = -300; key.shadow.camera.right = 300;
+key.shadow.camera.top = 300; key.shadow.camera.bottom = -300;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x8aa7ff, 0.6);
+rim.position.set(-200, 100, -150);
+scene.add(rim);
+const fill = new THREE.DirectionalLight(0xffb07a, 0.35);
+fill.position.set(0, -200, 0);
+scene.add(fill);
+
+// Ground shadow plane
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(400, 64),
+  new THREE.ShadowMaterial({ opacity: 0.35 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -150;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const material = new THREE.MeshStandardMaterial({
+  color: 0xd8dde8,
+  metalness: 0.15,
+  roughness: 0.55,
+  flatShading: false
+});
+
+let sculptureGroup = new THREE.Group();
+scene.add(sculptureGroup);
+
+// --- Geometry builders ---
+
+// Build one twisted cage bar that follows the silhouette profile.
+function buildCageBar(params, barIndex) {
+  const { height, radius, twistRad, barThickness, pinch, detail, bars } = params;
+  const segments = Math.max(60, Math.floor(height / 2));
+  const path = new THREE.CurvePath();
+
+  const points = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const y = -height / 2 + t * height;
+
+    // silhouette: pinched at the waist, bulging slightly at ends
+    const waist = 1 - pinch * Math.sin(Math.PI * t);
+    const bulge = 1 + 0.08 * Math.sin(Math.PI * t * 2);
+    const r = radius * waist * bulge;
+
+    const theta = (barIndex / bars) * Math.PI * 2 + t * twistRad;
+    points.push(new THREE.Vector3(
+      Math.cos(theta) * r,
+      y,
+      Math.sin(theta) * r
+    ));
+  }
+  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.2);
+  const tubularSegments = Math.max(80, Math.floor(segments * 1.2));
+  const radialSegments = Math.max(6, Math.floor(detail / 3));
+  return new THREE.TubeGeometry(curve, tubularSegments, barThickness, radialSegments, false);
+}
+
+// End caps (top and bottom rings) that hold the bars together.
+function buildEndRing(params, y) {
+  const { radius, barThickness, detail, pinch } = params;
+  // match the silhouette at the end: t=0 or t=1 → waist = 1
+  const tubeR = barThickness * 1.1;
+  const geo = new THREE.TorusGeometry(radius * (1 - pinch * 0), tubeR, Math.max(8, detail / 3), Math.max(24, detail * 2));
+  geo.rotateX(Math.PI / 2);
+  geo.translate(0, y, 0);
+  return geo;
+}
+
+// A chain of interlocking rings trapped inside the cage.
+// Each successive ring is rotated 90° around a different axis so they're linked.
+function buildCaptiveChain(params) {
+  const { height, radius, linkCount, linkThickness, pinch, detail } = params;
+  if (linkCount <= 0) return null;
+
+  const geos = [];
+  // Room available at centerline: slightly less than smallest waist radius
+  const minWaist = radius * (1 - pinch);
+  const maxMajor = Math.min(minWaist * 0.55, height / (linkCount + 1) * 0.9);
+  const major = Math.max(8, maxMajor);
+  const minor = linkThickness * 0.9;
+
+  // Stack chain vertically, centered.
+  const span = (linkCount - 1) * major * 0.95;
+  const y0 = -span / 2;
+
+  for (let i = 0; i < linkCount; i++) {
+    const y = y0 + i * major * 0.95;
+    const geo = new THREE.TorusGeometry(
+      major,
+      minor,
+      Math.max(8, detail / 3),
+      Math.max(24, detail * 2)
+    );
+    // Alternate orientation so each ring links through the previous one.
+    if (i % 2 === 0) {
+      geo.rotateY(Math.PI / 2); // ring in YZ plane
+    } else {
+      geo.rotateX(Math.PI / 2); // ring in XY plane
+    }
+    geo.translate(0, y, 0);
+    geos.push(geo);
+  }
+  return mergeGeometries(geos, false);
+}
+
+// Central captive orb suspended by nothing — floats inside.
+// (Only visually; it gets merged into the same STL, so the printer prints it
+// resting on supports that snap off, or free inside if the link chain holds it.)
+function buildCoreOrb(params) {
+  const { radius, pinch, detail, linkCount } = params;
+  if (linkCount > 0) return null; // skip if we have a chain already
+  const r = radius * (1 - pinch) * 0.35;
+  return new THREE.IcosahedronGeometry(r, Math.max(1, Math.floor(detail / 12)));
+}
+
+function buildSculpture(params) {
+  const geos = [];
+  for (let i = 0; i < params.bars; i++) {
+    geos.push(buildCageBar(params, i));
+  }
+  geos.push(buildEndRing(params, -params.height / 2));
+  geos.push(buildEndRing(params, params.height / 2));
+
+  const chain = buildCaptiveChain(params);
+  if (chain) geos.push(chain);
+
+  const orb = buildCoreOrb(params);
+  if (orb) geos.push(orb);
+
+  return mergeGeometries(geos, false);
+}
+
+// --- Wiring sliders ---
+
+const sliders = {
+  height: document.getElementById('s-height'),
+  radius: document.getElementById('s-radius'),
+  twist: document.getElementById('s-twist'),
+  bars: document.getElementById('s-bars'),
+  bart: document.getElementById('s-bart'),
+  pinch: document.getElementById('s-pinch'),
+  links: document.getElementById('s-links'),
+  linkt: document.getElementById('s-linkt'),
+  detail: document.getElementById('s-detail'),
+};
+const labels = {
+  height: document.getElementById('v-height'),
+  radius: document.getElementById('v-radius'),
+  twist: document.getElementById('v-twist'),
+  bars: document.getElementById('v-bars'),
+  bart: document.getElementById('v-bart'),
+  pinch: document.getElementById('v-pinch'),
+  links: document.getElementById('v-links'),
+  linkt: document.getElementById('v-linkt'),
+  detail: document.getElementById('v-detail'),
+};
+
+function readParams() {
+  const detail = parseInt(sliders.detail.value, 10);
+  return {
+    height: parseFloat(sliders.height.value),
+    radius: parseFloat(sliders.radius.value),
+    twistRad: parseFloat(sliders.twist.value) * Math.PI / 180,
+    bars: parseInt(sliders.bars.value, 10),
+    barThickness: parseFloat(sliders.bart.value) / 10,
+    pinch: parseFloat(sliders.pinch.value) / 100,
+    linkCount: parseInt(sliders.links.value, 10),
+    linkThickness: parseFloat(sliders.linkt.value) / 10,
+    detail,
+  };
+}
+
+function updateLabels() {
+  labels.height.textContent = `${sliders.height.value} mm`;
+  labels.radius.textContent = `${sliders.radius.value} mm`;
+  labels.twist.textContent = `${sliders.twist.value}°`;
+  labels.bars.textContent = sliders.bars.value;
+  labels.bart.textContent = `${(sliders.bart.value / 10).toFixed(1)} mm`;
+  labels.pinch.textContent = `${sliders.pinch.value}%`;
+  labels.links.textContent = sliders.links.value;
+  labels.linkt.textContent = `${(sliders.linkt.value / 10).toFixed(1)} mm`;
+  const d = parseInt(sliders.detail.value, 10);
+  labels.detail.textContent = d < 16 ? 'Faceted' : d < 32 ? 'Smooth' : 'Ultra';
+}
+
+let rebuildTimer = null;
+function scheduleRebuild() {
+  updateLabels();
+  if (rebuildTimer) cancelAnimationFrame(rebuildTimer);
+  rebuildTimer = requestAnimationFrame(rebuild);
+}
+
+let currentGeometry = null;
+
+function rebuild() {
+  status.textContent = 'Building…';
+  // dispose old
+  sculptureGroup.traverse(obj => {
+    if (obj.isMesh) obj.geometry.dispose();
+  });
+  scene.remove(sculptureGroup);
+  sculptureGroup = new THREE.Group();
+
+  const params = readParams();
+  const geo = buildSculpture(params);
+  geo.computeVertexNormals();
+  currentGeometry = geo;
+
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  sculptureGroup.add(mesh);
+
+  // Faint wireframe overlay for the "engineering" feel
+  const wire = new THREE.Mesh(
+    geo,
+    new THREE.MeshBasicMaterial({ color: 0x7cf7c4, wireframe: true, transparent: true, opacity: 0.05 })
+  );
+  sculptureGroup.add(wire);
+
+  scene.add(sculptureGroup);
+  // Drop it so it rests on the shadow plane visually
+  sculptureGroup.position.y = params.height / 2 - 140;
+
+  status.innerHTML = `<span class="ok">●</span> ${geo.attributes.position.count.toLocaleString()} verts`;
+}
+
+for (const k of Object.keys(sliders)) {
+  sliders[k].addEventListener('input', scheduleRebuild);
+}
+
+document.getElementById('reset').addEventListener('click', () => {
+  sliders.height.value = 120;
+  sliders.radius.value = 42;
+  sliders.twist.value = 220;
+  sliders.bars.value = 6;
+  sliders.bart.value = 22;
+  sliders.pinch.value = 35;
+  sliders.links.value = 4;
+  sliders.linkt.value = 26;
+  sliders.detail.value = 24;
+  scheduleRebuild();
+});
+
+document.getElementById('randomize').addEventListener('click', () => {
+  const rand = (min, max, step = 1) => {
+    const n = Math.round((Math.random() * (max - min) + min) / step) * step;
+    return n;
+  };
+  sliders.height.value = rand(80, 200);
+  sliders.radius.value = rand(28, 70);
+  sliders.twist.value = rand(0, 600, 10);
+  sliders.bars.value = rand(4, 10);
+  sliders.bart.value = rand(15, 32);
+  sliders.pinch.value = rand(10, 60);
+  sliders.links.value = rand(2, 6);
+  sliders.linkt.value = rand(18, 36);
+  scheduleRebuild();
+});
+
+document.getElementById('download').addEventListener('click', () => {
+  if (!currentGeometry) return;
+  const exporter = new STLExporter();
+  const exportMesh = new THREE.Mesh(currentGeometry, material);
+  const stl = exporter.parse(exportMesh, { binary: true });
+  const blob = new Blob([stl], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href = url;
+  a.download = `captive-lattice-${stamp}.stl`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  status.innerHTML = `<span class="ok">●</span> STL downloaded`;
+});
+
+// --- Render loop ---
+function resize() {
+  const w = view.clientWidth;
+  const h = view.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+rebuild();
+</script>
+</body>
+</html>
