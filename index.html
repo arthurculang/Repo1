@@ -208,18 +208,18 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Anastomosis</label><span class="val" id="v-cross">35%</span></div>
-      <input type="range" id="s-cross" min="0" max="100" step="1" value="35" />
+      <div class="row"><label>Anastomosis</label><span class="val" id="v-cross">60%</span></div>
+      <input type="range" id="s-cross" min="0" max="100" step="1" value="60" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Hard edges</label><span class="val" id="v-hard">40%</span></div>
-      <input type="range" id="s-hard" min="0" max="100" step="1" value="40" />
+      <div class="row"><label>Hard edges</label><span class="val" id="v-hard">50%</span></div>
+      <input type="range" id="s-hard" min="0" max="100" step="1" value="50" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Interlocks</label><span class="val" id="v-loops">35%</span></div>
-      <input type="range" id="s-loops" min="0" max="100" step="1" value="35" />
+      <div class="row"><label>Interlocks</label><span class="val" id="v-loops">55%</span></div>
+      <input type="range" id="s-loops" min="0" max="100" step="1" value="55" />
     </div>
 
     <div class="slider">
@@ -238,13 +238,13 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Thickness</label><span class="val" id="v-thick">45%</span></div>
-      <input type="range" id="s-thick" min="15" max="75" step="1" value="45" />
+      <div class="row"><label>Thickness</label><span class="val" id="v-thick">35%</span></div>
+      <input type="range" id="s-thick" min="15" max="75" step="1" value="35" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Resolution</label><span class="val" id="v-res">80</span></div>
-      <input type="range" id="s-res" min="40" max="128" step="4" value="80" />
+      <div class="row"><label>Resolution</label><span class="val" id="v-res">96</span></div>
+      <input type="range" id="s-res" min="40" max="128" step="4" value="96" />
     </div>
   </aside>
 
@@ -460,121 +460,126 @@ function grow(params, rng) {
       x: lo + rng() * span,
       y: lo + rng() * span,
       z: lo + rng() * span,
-      size: 0.032 + rng() * 0.028,
+      // Tiny joint-size nuclei; the capsule struts between them are what
+      // read visually, not the balls themselves.
+      size: 0.018 + rng() * 0.018,
       dir: randomUnitVec(rng),
       active: true,
       generation: 0,
-      weight: 1.0,
+      weight: 0.7,
     };
     nodes.push(n);
     nuclei.push(n);
     prims.push({ type: 'ball', x: n.x, y: n.y, z: n.z, size: n.size, weight: n.weight });
   }
 
-  // Stage 2: stitch the nuclei together so we always start connected.
+  // Stage 2: MST connectors — thin struts stitching the nuclei into a single
+  // connected skeleton.
   mstConnect(nuclei, prims);
 
-  // Stage 3: multi-generation growth — more prolific, less size decay, so
-  // primitives accumulate across many scales instead of 4 big blobs.
+  // Stage 3: multi-generation growth. THIN struts with small joint balls.
+  // The structure should read as a 3D line drawing, not a pile of blobs.
   const mutation = params.mutation;
   const anast = params.anastomosis;
   for (let gen = 1; gen <= params.generations; gen++) {
     const spawned = [];
-    const stepScale = Math.pow(0.88, gen);
+    const stepScale = Math.pow(0.9, gen);
 
     for (const p of nodes) {
       if (!p.active) continue;
       if (rng() > params.fertility) continue;
-      const children = 2 + Math.floor(rng() * 3); // 2–4 per node
+      const children = 2 + Math.floor(rng() * 3);
       for (let c = 0; c < children; c++) {
-        // Direction: parent's direction blended with pure randomness via mutation.
-        const dir = mixDir(p.dir, randomUnitVec(rng), 0.25 + mutation * 0.7);
-        const step = (0.045 + rng() * 0.075) * stepScale;
+        const dir = mixDir(p.dir, randomUnitVec(rng), 0.3 + mutation * 0.65);
+        // Longer steps = more visible spacing between joints.
+        const step = (0.06 + rng() * 0.09) * stepScale;
         const nx = p.x + dir.x * step;
         const ny = p.y + dir.y * step;
         const nz = p.z + dir.z * step;
         if (nx < lo || nx > hi || ny < lo || ny > hi || nz < lo || nz > hi) continue;
-        const sizeDecay = 0.72 + rng() * 0.18; // 0.72–0.9: slower decay = richer
         const child = {
           x: nx, y: ny, z: nz,
-          size: Math.max(0.009, p.size * sizeDecay),
+          size: Math.max(0.009, p.size * (0.75 + rng() * 0.15)),
           dir,
           active: true,
           generation: gen,
-          weight: p.weight * 0.93,
+          weight: p.weight * 0.9,
         };
         spawned.push(child);
         prims.push({ type: 'ball', x: child.x, y: child.y, z: child.z, size: child.size, weight: child.weight });
-        // THIN capsule — 30% of the smaller ball, so connections read as
-        // tendrils and stems rather than sausages.
+        // Strut: very thin capsule (22% of smaller ball) — reads as a line.
         prims.push({
           type: 'capsule',
           x1: p.x, y1: p.y, z1: p.z, x2: child.x, y2: child.y, z2: child.z,
-          size: Math.max(0.008, Math.min(p.size, child.size) * 0.3),
-          weight: p.weight * 0.85,
+          size: Math.max(0.007, Math.min(p.size, child.size) * 0.22),
+          weight: 0.7,
         });
       }
-      // Most parents stay alive so trees branch densely rather than thin
-      // out into lonely tips.
-      if (rng() < 0.15 + mutation * 0.25) p.active = false;
+      if (rng() < 0.2 + mutation * 0.25) p.active = false;
     }
     nodes.push(...spawned);
+  }
 
-    // Stage 4: anastomosis — bridge nearby non-adjacent nodes. Thin bridges
-    // give the coral-net look.
-    if (anast > 0 && nodes.length > 4) {
-      const bridgeAttempts = Math.floor(anast * 10 * gen);
-      const maxD = 0.1 + anast * 0.09;
-      const minD = 0.02;
-      for (let b = 0; b < bridgeAttempts; b++) {
-        const a = nodes[Math.floor(rng() * nodes.length)];
-        let best = null, bestD = maxD;
-        for (const n of nodes) {
-          if (n === a) continue;
-          const d = dist(a, n);
-          if (d > minD && d < bestD) { best = n; bestD = d; }
-        }
-        if (best) {
-          prims.push({
-            type: 'capsule',
-            x1: a.x, y1: a.y, z1: a.z, x2: best.x, y2: best.y, z2: best.z,
-            size: Math.max(0.007, Math.min(a.size, best.size) * 0.28),
-            weight: 0.75,
-          });
-        }
+  // Stage 4: AGGRESSIVE anastomosis — lots of cross-struts after all
+  // generations have grown. This is where "bridges, linkages" come from.
+  // Pass 1: every node gets its K nearest non-adjacent neighbors linked.
+  if (anast > 0 && nodes.length > 3) {
+    const k = 2 + Math.floor(anast * 4);
+    const maxD = 0.12 + anast * 0.12;
+    for (const a of nodes) {
+      // Find k nearest nodes within maxD.
+      const cand = [];
+      for (const n of nodes) {
+        if (n === a) continue;
+        const d = dist(a, n);
+        if (d > 0.02 && d < maxD) cand.push({ n, d });
+      }
+      cand.sort((x, y) => x.d - y.d);
+      const picks = cand.slice(0, k);
+      for (const { n } of picks) {
+        if (rng() > 0.35 + anast * 0.4) continue;
+        prims.push({
+          type: 'capsule',
+          x1: a.x, y1: a.y, z1: a.z, x2: n.x, y2: n.y, z2: n.z,
+          size: Math.max(0.006, Math.min(a.size, n.size) * 0.2),
+          weight: 0.65,
+        });
       }
     }
   }
 
-  // Stage 5: surface bumps — many tiny balls scattered around every node,
-  // positioned just outside its metaball surface so they fuse but read as
-  // texture, not structure. This is what gives the piece rich micro-detail
-  // instead of smooth dumbbell skin.
-  const bumpsPerNode = 3 + Math.floor(params.mutation * 6);
-  for (const n of nodes) {
-    const bumps = bumpsPerNode + Math.floor(rng() * 3);
-    for (let i = 0; i < bumps; i++) {
-      const d = randomUnitVec(rng);
-      const off = n.size * (0.65 + rng() * 0.55);
-      const bx = n.x + d.x * off;
-      const by = n.y + d.y * off;
-      const bz = n.z + d.z * off;
-      if (bx < lo || bx > hi || by < lo || by > hi || bz < lo || bz > hi) continue;
-      prims.push({
-        type: 'ball',
-        x: bx, y: by, z: bz,
-        size: 0.009 + rng() * 0.02,
-        weight: 0.45 + rng() * 0.35,
-      });
-    }
+  // Stage 5: spike filaments — longer, skinnier, spindly.
+  const spikeCount = Math.floor(8 + params.mutation * 30);
+  for (let s = 0; s < spikeCount; s++) {
+    const tip = nodes[Math.floor(rng() * nodes.length)];
+    const dir = randomUnitVec(rng);
+    const spikeLen = 0.06 + rng() * 0.12;
+    const tx = tip.x + dir.x * spikeLen;
+    const ty = tip.y + dir.y * spikeLen;
+    const tz = tip.z + dir.z * spikeLen;
+    if (tx < lo || tx > hi || ty < lo || ty > hi || tz < lo || tz > hi) continue;
+    const spikeR = Math.max(0.005, tip.size * (0.15 + rng() * 0.1));
+    prims.push({
+      type: 'capsule',
+      x1: tip.x, y1: tip.y, z1: tip.z, x2: tx, y2: ty, z2: tz,
+      size: spikeR,
+      weight: 0.7,
+    });
+    // Small tip knob (not a blob).
+    prims.push({
+      type: 'ball', x: tx, y: ty, z: tz,
+      size: spikeR * 1.5,
+      weight: 0.65,
+    });
   }
 
-  // Stage 6: rosettes at a subset of tips — larger clusters of petals.
+  // Stage 6: small rosette flourishes — sparingly, only a few active tips
+  // get them, small petal sizes so they don't form cloud mass.
   for (const n of nodes) {
     if (!n.active) continue;
-    if (rng() > 0.55) continue;
-    const petals = 4 + Math.floor(rng() * 5);
-    const pr = n.size * 0.85;
+    if (rng() > 0.3) continue;
+    const petals = 3 + Math.floor(rng() * 3);
+    const pr = n.size * 1.1;
     for (let p = 0; p < petals; p++) {
       const d = randomUnitVec(rng);
       const px = n.x + d.x * pr;
@@ -584,65 +589,36 @@ function grow(params, rng) {
       prims.push({
         type: 'ball',
         x: px, y: py, z: pz,
-        size: n.size * (0.4 + rng() * 0.25),
-        weight: n.weight * 0.9,
+        size: n.size * 0.5,
+        weight: n.weight * 0.75,
       });
     }
   }
 
-  // Stage 7: spike filaments — thin capsule extensions from random nodes,
-  // capped with a tiny ball. Fine, spindly detail that's the opposite of
-  // "bony". Count scales with mutation so the user can dial it in.
-  const spikeCount = Math.floor(6 + params.mutation * 22);
-  for (let s = 0; s < spikeCount; s++) {
-    const tip = nodes[Math.floor(rng() * nodes.length)];
-    const dir = randomUnitVec(rng);
-    const spikeLen = tip.size * (1.5 + rng() * 3);
-    const tx = tip.x + dir.x * spikeLen;
-    const ty = tip.y + dir.y * spikeLen;
-    const tz = tip.z + dir.z * spikeLen;
-    if (tx < lo || tx > hi || ty < lo || ty > hi || tz < lo || tz > hi) continue;
-    const spikeR = Math.max(0.006, tip.size * (0.18 + rng() * 0.15));
-    prims.push({
-      type: 'capsule',
-      x1: tip.x, y1: tip.y, z1: tip.z, x2: tx, y2: ty, z2: tz,
-      size: spikeR,
-      weight: 0.8,
-    });
-    prims.push({
-      type: 'ball',
-      x: tx, y: ty, z: tz,
-      size: spikeR * 1.4,
-      weight: 0.7,
-    });
-  }
-
-  // Stage 8: antiballs — negative-strength spheres that carve holes through
-  // the final mesh.
-  const holeCount = Math.floor(params.holes * 28);
+  // Stage 7: BIG antiballs — generous voids carved through the structure.
+  // These produce gaps and chambers you can see into.
+  const holeCount = Math.floor(params.holes * 30);
   for (let i = 0; i < holeCount; i++) {
     const host = nodes[Math.floor(rng() * nodes.length)];
     const d = randomUnitVec(rng);
-    const off = host.size * (0.3 + rng() * 1.1);
+    const off = 0.04 + rng() * 0.12;
     prims.push({
       type: 'antiball',
       x: clamp(host.x + d.x * off),
       y: clamp(host.y + d.y * off),
       z: clamp(host.z + d.z * off),
-      size: 0.025 + rng() * 0.04,
-      weight: 1.0 + rng() * 0.3,
+      size: 0.045 + rng() * 0.065, // BIG
+      weight: 1.2 + rng() * 0.3,
     });
   }
 
-  // Stage 9: recursive sub-growth — each surviving leaf seeds a miniature
+  // Stage 8: recursive sub-growth — each surviving leaf seeds a miniature
   // growth at smaller scale. Repeat for `recursion` levels for true fractal
   // self-similarity (the same form re-appears at multiple scales).
   let frontier = nodes.filter(n => n.active);
   for (let r = 0; r < params.recursion; r++) {
     const nextFrontier = [];
-    const subScale = Math.pow(0.55, r + 1);
     for (const seed of frontier) {
-      // Each seed runs 1–2 generations of small branching.
       let active = [seed];
       const subGens = 1 + Math.floor(rng() * 2);
       for (let g = 0; g < subGens; g++) {
@@ -651,20 +627,20 @@ function grow(params, rng) {
           const k = 2 + Math.floor(rng() * 3);
           for (let c = 0; c < k; c++) {
             const dir = randomUnitVec(rng);
-            const step = (p.size || 0.02) * (1.4 + rng() * 1.0);
+            const step = (p.size || 0.015) * (1.8 + rng() * 1.2);
             const cx = p.x + dir.x * step;
             const cy = p.y + dir.y * step;
             const cz = p.z + dir.z * step;
             if (cx < lo || cx > hi || cy < lo || cy > hi || cz < lo || cz > hi) continue;
-            const cs = Math.max(0.007, (p.size || 0.02) * 0.55);
+            const cs = Math.max(0.006, (p.size || 0.015) * 0.6);
             const child = { x: cx, y: cy, z: cz, size: cs, active: true };
             next.push(child);
-            prims.push({ type: 'ball', x: cx, y: cy, z: cz, size: cs, weight: 0.85 });
+            prims.push({ type: 'ball', x: cx, y: cy, z: cz, size: cs, weight: 0.65 });
             prims.push({
               type: 'capsule',
               x1: p.x, y1: p.y, z1: p.z, x2: cx, y2: cy, z2: cz,
-              size: Math.max(0.005, cs * 0.32),
-              weight: 0.8,
+              size: Math.max(0.005, cs * 0.26),
+              weight: 0.65,
             });
           }
         }
@@ -675,33 +651,31 @@ function grow(params, rng) {
     frontier = nextFrontier;
   }
 
-  // Stage 10: hard-edged polyhedra — boxes and octahedra placed at random
-  // nodes, with random orientation. They union into the final mesh with
-  // visible flat faces and sharp edges, breaking the all-smooth metaball look.
-  const hardCount = Math.floor(params.hard * 18);
+  // Stage 9: hard-edged polyhedra — boxes and octahedra placed at random
+  // nodes, with random orientation. SIZED GENEROUSLY so they stand out from
+  // the thin skeleton rather than getting absorbed.
+  const hardCount = Math.floor(params.hard * 24);
   const polys = [];
   for (let i = 0; i < hardCount; i++) {
     const host = nodes[Math.floor(rng() * nodes.length)];
     if (!host) break;
-    const sz = host.size * (1.4 + rng() * 1.6);
+    // 0.04–0.09 in normalized coords — clearly larger than node joints.
+    const sz = 0.04 + rng() * 0.05;
     polys.push({
       type: rng() < 0.55 ? 'box' : 'octa',
       x: host.x, y: host.y, z: host.z,
       size: sz,
-      // Random rotation as Euler angles.
       rx: rng() * Math.PI * 2,
       ry: rng() * Math.PI * 2,
       rz: rng() * Math.PI * 2,
     });
   }
 
-  // Stage 11: interlocking tori — placed perpendicular to the midpoint of a
+  // Stage 10: interlocking tori — placed perpendicular to the midpoint of a
   // random connection capsule so the capsule passes through the torus's
-  // hole. They union with the main mesh but each is a separate closed
-  // shell, so the result has REAL topological loops you can't draw out.
-  const loopCount = Math.floor(params.loops * 14);
+  // hole. More of them, bigger, so the loops REGISTER as visual features.
+  const loopCount = Math.floor(params.loops * 22);
   const tori = [];
-  // Build a list of capsules from prims to choose from.
   const capsules = prims.filter(p => p.type === 'capsule');
   for (let i = 0; i < loopCount && capsules.length; i++) {
     const cap = capsules[Math.floor(rng() * capsules.length)];
@@ -712,15 +686,15 @@ function grow(params, rng) {
     const ay = cap.y2 - cap.y1;
     const az = cap.z2 - cap.z1;
     const aLen = Math.hypot(ax, ay, az) || 1;
-    // Major radius must clear the capsule's tube radius.
-    const major = Math.max(cap.size * 2.5, 0.025) * (1 + rng() * 1.5);
-    const minor = Math.max(0.005, cap.size * (0.5 + rng() * 0.5));
+    // Major radius visibly larger than joint sizes — clear rings.
+    const major = 0.035 + rng() * 0.065;
+    // Thin tube so the ring doesn't look like a donut.
+    const minor = 0.006 + rng() * 0.008;
     if (cx - major < lo || cx + major > hi || cy - major < lo || cy + major > hi ||
         cz - major < lo || cz + major > hi) continue;
     tori.push({
       type: 'torus',
       x: cx, y: cy, z: cz,
-      // Axis along the capsule (so capsule passes through hole).
       ax: ax / aLen, ay: ay / aLen, az: az / aLen,
       major, minor,
     });
@@ -1181,14 +1155,14 @@ document.getElementById('reset').addEventListener('click', () => {
   sliders.rec.value = 2;
   sliders.fert.value = 85;
   sliders.mut.value = 60;
-  sliders.cross.value = 35;
-  sliders.hard.value = 40;
-  sliders.loops.value = 35;
+  sliders.cross.value = 60;
+  sliders.hard.value = 50;
+  sliders.loops.value = 55;
   sliders.sym.value = 0;
   sliders.holes.value = 35;
   sliders.noise.value = 55;
-  sliders.thick.value = 45;
-  sliders.res.value = 80;
+  sliders.thick.value = 35;
+  sliders.res.value = 96;
   scheduleRebuild();
 });
 
