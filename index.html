@@ -172,13 +172,14 @@
     <button id="panel-toggle" type="button" aria-label="Toggle controls"></button>
     <h1>Organismal</h1>
     <div class="sub">
-      A multi-pass generative sculpture. Random nuclei are evolved through
-      generations of branching and cross-fusion, then each leaf tip seeds
-      a recursive sub-growth at smaller scale for true fractal self-similarity.
-      Hard-edged polyhedra and interlocking metal rings are unioned with the
-      organic mass; antiballs carve voids; a multi-octave ridged noise
-      wrinkles the surface. The result is a single multi-shell STL printable
-      in metal — and topologically irreproducible by hand.
+      Grown by space-colonization: a cloud of attractor points is scattered
+      inside an envelope and the skeleton grows toward them, iteration by
+      iteration, consuming attractors as it reaches them. Every branch is
+      rooted in the tree — connectivity is guaranteed by construction.
+      Radii taper to tips via Murray's law; anastomosis adds cross-struts;
+      hard-edged polyhedra and interlocking rings decorate random nodes;
+      a per-vertex ridged noise wrinkles the skin. The result is a
+      multi-shell STL that prints as a single solid in metal.
     </div>
 
     <div class="actions">
@@ -195,43 +196,38 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Starting nuclei</label><span class="val" id="v-nuc">5</span></div>
-      <input type="range" id="s-nuc" min="1" max="8" step="1" value="5" />
+      <div class="row"><label>Attractors</label><span class="val" id="v-attr">260</span></div>
+      <input type="range" id="s-attr" min="60" max="600" step="10" value="260" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Generations</label><span class="val" id="v-gen">5</span></div>
-      <input type="range" id="s-gen" min="2" max="7" step="1" value="5" />
+      <div class="row"><label>Seeds</label><span class="val" id="v-seeds">2</span></div>
+      <input type="range" id="s-seeds" min="1" max="5" step="1" value="2" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Recursion</label><span class="val" id="v-rec">1</span></div>
-      <input type="range" id="s-rec" min="0" max="3" step="1" value="1" />
+      <div class="row"><label>Envelope</label><span class="val" id="v-env">sphere</span></div>
+      <input type="range" id="s-env" min="0" max="4" step="1" value="0" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Fertility</label><span class="val" id="v-fert">85%</span></div>
-      <input type="range" id="s-fert" min="20" max="100" step="1" value="85" />
+      <div class="row"><label>Jitter</label><span class="val" id="v-jit">30%</span></div>
+      <input type="range" id="s-jit" min="0" max="100" step="1" value="30" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Mutation</label><span class="val" id="v-mut">60%</span></div>
-      <input type="range" id="s-mut" min="0" max="100" step="1" value="60" />
+      <div class="row"><label>Anastomosis</label><span class="val" id="v-cross">45%</span></div>
+      <input type="range" id="s-cross" min="0" max="100" step="1" value="45" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Anastomosis</label><span class="val" id="v-cross">60%</span></div>
-      <input type="range" id="s-cross" min="0" max="100" step="1" value="60" />
+      <div class="row"><label>Hard edges</label><span class="val" id="v-hard">40%</span></div>
+      <input type="range" id="s-hard" min="0" max="100" step="1" value="40" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Hard edges</label><span class="val" id="v-hard">50%</span></div>
-      <input type="range" id="s-hard" min="0" max="100" step="1" value="50" />
-    </div>
-
-    <div class="slider">
-      <div class="row"><label>Interlocks</label><span class="val" id="v-loops">55%</span></div>
-      <input type="range" id="s-loops" min="0" max="100" step="1" value="55" />
+      <div class="row"><label>Interlocks</label><span class="val" id="v-loops">45%</span></div>
+      <input type="range" id="s-loops" min="0" max="100" step="1" value="45" />
     </div>
 
     <div class="slider">
@@ -240,26 +236,21 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Holes</label><span class="val" id="v-holes">35%</span></div>
-      <input type="range" id="s-holes" min="0" max="100" step="1" value="35" />
+      <div class="row"><label>Surface noise</label><span class="val" id="v-noise">40%</span></div>
+      <input type="range" id="s-noise" min="0" max="80" step="1" value="40" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Surface noise</label><span class="val" id="v-noise">55%</span></div>
-      <input type="range" id="s-noise" min="0" max="80" step="1" value="55" />
+      <div class="row"><label>Thickness</label><span class="val" id="v-thick">50%</span></div>
+      <input type="range" id="s-thick" min="0" max="100" step="1" value="50" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Thickness</label><span class="val" id="v-thick">40%</span></div>
-      <input type="range" id="s-thick" min="0" max="100" step="1" value="40" />
+      <div class="row"><label>Resolution</label><span class="val" id="v-res">88</span></div>
+      <input type="range" id="s-res" min="40" max="128" step="4" value="88" />
     </div>
 
-    <div class="slider">
-      <div class="row"><label>Resolution</label><span class="val" id="v-res">96</span></div>
-      <input type="range" id="s-res" min="40" max="128" step="4" value="96" />
-    </div>
-
-    <div class="version" id="version">v16</div>
+    <div class="version" id="version">v17</div>
   </aside>
 
   <main id="view">
@@ -454,248 +445,234 @@ function mstConnect(nuclei, prims) {
   }
 }
 
-function grow(params, rng) {
+// Space colonization (Runions et al. 2007). Grow a branching skeleton by
+// scattering "attractor" points in 3D space and iteratively having the
+// skeleton grow toward them. Connectivity is guaranteed: every node has a
+// parent edge, so the whole tree is a single connected component from the
+// first iteration. Attractors are consumed as the skeleton reaches them.
+// Produces naturally branching, organic forms (trees, coral, lungs, river
+// deltas) that feel grown rather than placed.
+function spaceColonize(params, rng) {
   const prims = [];
-
-  // Interior zone — stay back from grid edge so the seal can close cleanly.
-  const lo = 0.15, hi = 0.85;
-  const span = hi - lo;
+  const lo = 0.12, hi = 0.88;
+  const mid = 0.5;
   const clamp = (v) => Math.max(lo, Math.min(hi, v));
 
-  // Stage 1: initial nuclei cloud. Nuclei are DELIBERATELY small so that
-  // capsule connections can be proportionally thin; otherwise everything
-  // looks like dumbbells.
+  // Algorithm constants. Ratios chosen so growth propagates smoothly without
+  // attractors being consumed before they can influence direction choice.
+  const di = 0.13;        // radius of influence
+  const dk = 0.022;       // kill distance
+  const D = 0.017;        // step size per iteration
+  const jitter = 0.1 + params.jitter * 0.4;
+  const maxIter = 280;
+
+  // === 1. Scatter attractors inside an envelope. ===
+  // The envelope shape strongly controls the final silhouette.
+  const envelope = params.envelope;
+  const want = params.attractors;
+  const maxAttempts = want * 12;
+  const attractors = [];
+  let attempts = 0;
+  const inside = (dx, dy, dz) => {
+    if (envelope === 0) {
+      // Sphere
+      return dx*dx + dy*dy + dz*dz < 0.38 * 0.38;
+    }
+    if (envelope === 1) {
+      // Tall / columnar ellipsoid
+      return (dx*dx)/(0.25*0.25) + (dy*dy)/(0.42*0.42) + (dz*dz)/(0.25*0.25) < 1;
+    }
+    if (envelope === 2) {
+      // Flat / discoid
+      return (dx*dx)/(0.4*0.4) + (dy*dy)/(0.16*0.16) + (dz*dz)/(0.4*0.4) < 1;
+    }
+    if (envelope === 3) {
+      // Two lobes — figure-eight along X axis
+      const d1sq = (dx - 0.17) ** 2 + dy*dy + dz*dz;
+      const d2sq = (dx + 0.17) ** 2 + dy*dy + dz*dz;
+      return d1sq < 0.26 * 0.26 || d2sq < 0.26 * 0.26;
+    }
+    if (envelope === 4) {
+      // Hollow shell — growth hugs the outside
+      const r2 = dx*dx + dy*dy + dz*dz;
+      return r2 > 0.24 * 0.24 && r2 < 0.4 * 0.4;
+    }
+    // Fallback sphere
+    return dx*dx + dy*dy + dz*dz < 0.38 * 0.38;
+  };
+  while (attractors.length < want && attempts < maxAttempts) {
+    attempts++;
+    const x = lo + rng() * (hi - lo);
+    const y = lo + rng() * (hi - lo);
+    const z = lo + rng() * (hi - lo);
+    if (inside(x - mid, y - mid, z - mid)) {
+      attractors.push({ x, y, z });
+    }
+  }
+
+  // === 2. Seed roots near the center of the cloud so they grow OUTWARD
+  // through the attractors regardless of envelope shape. A small random
+  // offset per seed keeps them from coinciding.
   const nodes = [];
-  const nuclei = [];
-  const nucCount = params.nuclei;
-  for (let i = 0; i < nucCount; i++) {
-    const n = {
-      x: lo + rng() * span,
-      y: lo + rng() * span,
-      z: lo + rng() * span,
-      // Tiny joint-size nuclei; the capsule struts between them are what
-      // read visually, not the balls themselves.
-      size: 0.018 + rng() * 0.018,
-      dir: randomUnitVec(rng),
-      active: true,
-      generation: 0,
-      weight: 0.7,
+  const roots = [];
+  const rootR = 0.09;
+  for (let i = 0; i < params.seeds; i++) {
+    const theta = (i / params.seeds) * Math.PI * 2 + rng() * 0.9;
+    const phi = Math.acos(2 * rng() - 1);
+    const r = rootR * (0.3 + rng() * 0.7);
+    const root = {
+      x: mid + Math.sin(phi) * Math.cos(theta) * r,
+      y: mid + Math.cos(phi) * r,
+      z: mid + Math.sin(phi) * Math.sin(theta) * r,
+      parent: null,
+      children: [],
+      radius: 0,
     };
-    nodes.push(n);
-    nuclei.push(n);
-    prims.push({ type: 'ball', x: n.x, y: n.y, z: n.z, size: n.size, weight: n.weight });
+    nodes.push(root);
+    roots.push(root);
   }
 
-  // Stage 2: MST connectors — thin struts stitching the nuclei into a single
-  // connected skeleton.
-  mstConnect(nuclei, prims);
+  // === 3. Iterative growth. ===
+  let remaining = attractors.slice();
+  for (let iter = 0; iter < maxIter; iter++) {
+    if (remaining.length === 0) break;
 
-  // Stage 3: multi-generation growth. THIN struts with small joint balls.
-  // The structure should read as a 3D line drawing, not a pile of blobs.
-  const mutation = params.mutation;
-  const anast = params.anastomosis;
-  for (let gen = 1; gen <= params.generations; gen++) {
-    const spawned = [];
-    const stepScale = Math.pow(0.9, gen);
-
-    for (const p of nodes) {
-      if (!p.active) continue;
-      if (rng() > params.fertility) continue;
-      const children = 2 + Math.floor(rng() * 3);
-      for (let c = 0; c < children; c++) {
-        const dir = mixDir(p.dir, randomUnitVec(rng), 0.3 + mutation * 0.65);
-        // Longer steps = more visible spacing between joints.
-        const step = (0.06 + rng() * 0.09) * stepScale;
-        const nx = p.x + dir.x * step;
-        const ny = p.y + dir.y * step;
-        const nz = p.z + dir.z * step;
-        if (nx < lo || nx > hi || ny < lo || ny > hi || nz < lo || nz > hi) continue;
-        const child = {
-          x: nx, y: ny, z: nz,
-          size: Math.max(0.009, p.size * (0.75 + rng() * 0.15)),
-          dir,
-          active: true,
-          generation: gen,
-          weight: p.weight * 0.9,
-        };
-        spawned.push(child);
-        prims.push({ type: 'ball', x: child.x, y: child.y, z: child.z, size: child.size, weight: child.weight });
-        // Strut: very thin capsule (22% of smaller ball) — reads as a line.
-        prims.push({
-          type: 'capsule',
-          x1: p.x, y1: p.y, z1: p.z, x2: child.x, y2: child.y, z2: child.z,
-          size: Math.max(0.007, Math.min(p.size, child.size) * 0.22),
-          weight: 0.7,
-        });
-      }
-      if (rng() < 0.2 + mutation * 0.25) p.active = false;
-    }
-    nodes.push(...spawned);
-  }
-
-  // Stage 4: AGGRESSIVE anastomosis — lots of cross-struts after all
-  // generations have grown. This is where "bridges, linkages" come from.
-  // Pass 1: every node gets its K nearest non-adjacent neighbors linked.
-  if (anast > 0 && nodes.length > 3) {
-    const k = 2 + Math.floor(anast * 3);
-    const maxD = 0.12 + anast * 0.1;
-    // Total bridge budget — prevents O(N²) capsule explosion on large nodes.
-    const bridgeBudget = Math.min(400, Math.floor(nodes.length * (0.5 + anast)));
-    let bridgesAdded = 0;
-    // Shuffle nodes so we sample uniformly when capping.
-    const shuffledNodes = nodes.slice();
-    for (let i = shuffledNodes.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [shuffledNodes[i], shuffledNodes[j]] = [shuffledNodes[j], shuffledNodes[i]];
-    }
-    for (const a of shuffledNodes) {
-      if (bridgesAdded >= bridgeBudget) break;
-      const cand = [];
+    const votes = new Map();
+    // For each attractor, find the nearest node within influence radius
+    // and accumulate a direction vote for it.
+    for (const a of remaining) {
+      let nearest = null, nearestD = di;
       for (const n of nodes) {
-        if (n === a) continue;
-        const d = dist(a, n);
-        if (d > 0.02 && d < maxD) cand.push({ n, d });
+        const d = Math.hypot(a.x - n.x, a.y - n.y, a.z - n.z);
+        if (d < nearestD) { nearestD = d; nearest = n; }
       }
-      cand.sort((x, y) => x.d - y.d);
-      const picks = cand.slice(0, k);
-      for (const { n } of picks) {
-        if (bridgesAdded >= bridgeBudget) break;
-        if (rng() > 0.35 + anast * 0.4) continue;
-        prims.push({
-          type: 'capsule',
-          x1: a.x, y1: a.y, z1: a.z, x2: n.x, y2: n.y, z2: n.z,
-          size: Math.max(0.006, Math.min(a.size, n.size) * 0.2),
-          weight: 0.65,
-        });
-        bridgesAdded++;
-      }
+      if (!nearest) continue;
+      const dx = a.x - nearest.x;
+      const dy = a.y - nearest.y;
+      const dz = a.z - nearest.z;
+      const L = Math.hypot(dx, dy, dz) || 1;
+      const v = votes.get(nearest) || { x: 0, y: 0, z: 0, count: 0 };
+      v.x += dx / L; v.y += dy / L; v.z += dz / L; v.count++;
+      votes.set(nearest, v);
     }
+
+    if (votes.size === 0) break;
+
+    // Spawn children in the averaged direction, with jitter.
+    const newNodes = [];
+    for (const [parent, v] of votes) {
+      const L = Math.hypot(v.x, v.y, v.z) || 1;
+      let dirX = v.x / L, dirY = v.y / L, dirZ = v.z / L;
+      // Blend with random jitter for organic wobble.
+      const jx = (rng() - 0.5) * 2;
+      const jy = (rng() - 0.5) * 2;
+      const jz = (rng() - 0.5) * 2;
+      dirX += jx * jitter;
+      dirY += jy * jitter;
+      dirZ += jz * jitter;
+      const JL = Math.hypot(dirX, dirY, dirZ) || 1;
+      dirX /= JL; dirY /= JL; dirZ /= JL;
+
+      const nx = parent.x + dirX * D;
+      const ny = parent.y + dirY * D;
+      const nz = parent.z + dirZ * D;
+      if (nx < lo || nx > hi || ny < lo || ny > hi || nz < lo || nz > hi) continue;
+      const child = { x: nx, y: ny, z: nz, parent, children: [], radius: 0 };
+      parent.children.push(child);
+      nodes.push(child);
+      newNodes.push(child);
+    }
+
+    // Remove attractors consumed by any new node.
+    if (newNodes.length > 0) {
+      remaining = remaining.filter(a => {
+        for (const n of newNodes) {
+          if (Math.hypot(a.x - n.x, a.y - n.y, a.z - n.z) < dk) return false;
+        }
+        return true;
+      });
+    }
+
+    // Hard ceiling on node count to prevent runaway cases.
+    if (nodes.length > 1200) break;
   }
 
-  // Stage 5: spike filaments — longer, skinnier, spindly.
-  const spikeCount = Math.floor(8 + params.mutation * 30);
-  for (let s = 0; s < spikeCount; s++) {
-    const tip = nodes[Math.floor(rng() * nodes.length)];
-    const dir = randomUnitVec(rng);
-    const spikeLen = 0.06 + rng() * 0.12;
-    const tx = tip.x + dir.x * spikeLen;
-    const ty = tip.y + dir.y * spikeLen;
-    const tz = tip.z + dir.z * spikeLen;
-    if (tx < lo || tx > hi || ty < lo || ty > hi || tz < lo || tz > hi) continue;
-    const spikeR = Math.max(0.005, tip.size * (0.15 + rng() * 0.1));
-    prims.push({
-      type: 'capsule',
-      x1: tip.x, y1: tip.y, z1: tip.z, x2: tx, y2: ty, z2: tz,
-      size: spikeR,
-      weight: 0.7,
-    });
-    // Small tip knob (not a blob).
-    prims.push({
-      type: 'ball', x: tx, y: ty, z: tz,
-      size: spikeR * 1.5,
-      weight: 0.65,
-    });
+  // === 4. Assign radii via Murray's law: r_parent^k = sum(r_child^k). ===
+  // Produces thick trunks that taper smoothly to fine tips — biologically
+  // realistic branching thickness, and looks right.
+  const kExp = 2.5;
+  const leafR = 0.004 + params.thicknessScale * 0.004; // ~0.5-1 mm at 120mm
+  const maxR = 0.045 * params.thicknessScale;
+  function assignRadii(n) {
+    if (n.children.length === 0) {
+      n.radius = leafR;
+      return;
+    }
+    let sum = 0;
+    for (const c of n.children) {
+      assignRadii(c);
+      sum += Math.pow(c.radius, kExp);
+    }
+    n.radius = Math.min(maxR, Math.pow(sum, 1 / kExp));
   }
+  for (const root of roots) assignRadii(root);
 
-  // Stage 6: small rosette flourishes — sparingly, only a few active tips
-  // get them, small petal sizes so they don't form cloud mass.
+  // === 5. Emit a ball at every node and a capsule along every parent edge. ===
   for (const n of nodes) {
-    if (!n.active) continue;
-    if (rng() > 0.3) continue;
-    const petals = 3 + Math.floor(rng() * 3);
-    const pr = n.size * 1.1;
-    for (let p = 0; p < petals; p++) {
-      const d = randomUnitVec(rng);
-      const px = n.x + d.x * pr;
-      const py = n.y + d.y * pr;
-      const pz = n.z + d.z * pr;
-      if (px < lo || px > hi || py < lo || py > hi || pz < lo || pz > hi) continue;
+    prims.push({ type: 'ball', x: n.x, y: n.y, z: n.z, size: n.radius, weight: 0.85 });
+    if (n.parent) {
+      const rr = Math.min(n.radius, n.parent.radius) * 0.95;
       prims.push({
-        type: 'ball',
-        x: px, y: py, z: pz,
-        size: n.size * 0.5,
-        weight: n.weight * 0.75,
+        type: 'capsule',
+        x1: n.parent.x, y1: n.parent.y, z1: n.parent.z,
+        x2: n.x, y2: n.y, z2: n.z,
+        size: rr,
+        weight: 0.85,
       });
     }
   }
 
-  // Stage 7: BIG antiballs — generous voids carved through the structure.
-  // These produce gaps and chambers you can see into.
-  const holeCount = Math.floor(params.holes * 30);
-  for (let i = 0; i < holeCount; i++) {
-    const host = nodes[Math.floor(rng() * nodes.length)];
-    const d = randomUnitVec(rng);
-    const off = 0.04 + rng() * 0.12;
-    prims.push({
-      type: 'antiball',
-      x: clamp(host.x + d.x * off),
-      y: clamp(host.y + d.y * off),
-      z: clamp(host.z + d.z * off),
-      size: 0.045 + rng() * 0.065, // BIG
-      weight: 1.2 + rng() * 0.3,
-    });
+  // === 6. Anastomosis: bridge nearby non-adjacent nodes with thin struts.
+  // These are all guaranteed to terminate at existing nodes, so they
+  // cannot introduce disconnected pieces.
+  if (params.anastomosis > 0 && nodes.length > 6) {
+    const maxBridges = Math.floor(params.anastomosis * 80);
+    const maxD = 0.07;
+    const minD = 0.018;
+    let added = 0;
+    const shuffled = nodes.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    for (const a of shuffled) {
+      if (added >= maxBridges) break;
+      let cand = null, candD = maxD;
+      for (const b of nodes) {
+        if (b === a || b === a.parent || b.parent === a) continue;
+        const d = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+        if (d > minD && d < candD) { cand = b; candD = d; }
+      }
+      if (cand && rng() < 0.3 + params.anastomosis * 0.55) {
+        prims.push({
+          type: 'capsule',
+          x1: a.x, y1: a.y, z1: a.z, x2: cand.x, y2: cand.y, z2: cand.z,
+          size: Math.min(a.radius, cand.radius) * 0.55,
+          weight: 0.7,
+        });
+        added++;
+      }
+    }
   }
 
-  // Stage 8: recursive sub-growth — each surviving leaf seeds a miniature
-  // growth at smaller scale. Repeat for `recursion` levels for true fractal
-  // self-similarity. CAPPED per level to prevent exponential blowup.
-  let frontier = nodes.filter(n => n.active);
-  const recursionCap = 250; // hard upper bound on frontier size
-  for (let r = 0; r < params.recursion; r++) {
-    // Sample down if frontier is too large.
-    if (frontier.length > recursionCap) {
-      const sampled = [];
-      for (let i = 0; i < recursionCap; i++) {
-        sampled.push(frontier[Math.floor(rng() * frontier.length)]);
-      }
-      frontier = sampled;
-    }
-    const nextFrontier = [];
-    for (const seed of frontier) {
-      let active = [seed];
-      const subGens = 1 + Math.floor(rng() * 2);
-      for (let g = 0; g < subGens; g++) {
-        const next = [];
-        for (const p of active) {
-          // Fewer children per step — 1–2 instead of 2–4.
-          const k = 1 + Math.floor(rng() * 2);
-          for (let c = 0; c < k; c++) {
-            const dir = randomUnitVec(rng);
-            const step = (p.size || 0.015) * (1.8 + rng() * 1.2);
-            const cx = p.x + dir.x * step;
-            const cy = p.y + dir.y * step;
-            const cz = p.z + dir.z * step;
-            if (cx < lo || cx > hi || cy < lo || cy > hi || cz < lo || cz > hi) continue;
-            const cs = Math.max(0.006, (p.size || 0.015) * 0.55);
-            const child = { x: cx, y: cy, z: cz, size: cs, active: true };
-            next.push(child);
-            prims.push({ type: 'ball', x: cx, y: cy, z: cz, size: cs, weight: 0.65 });
-            prims.push({
-              type: 'capsule',
-              x1: p.x, y1: p.y, z1: p.z, x2: cx, y2: cy, z2: cz,
-              size: Math.max(0.005, cs * 0.26),
-              weight: 0.65,
-            });
-          }
-        }
-        active = next;
-      }
-      nextFrontier.push(...active);
-    }
-    frontier = nextFrontier;
-  }
-
-  // Stage 9: hard-edged polyhedra — boxes and octahedra placed at random
-  // nodes, with random orientation. SIZED GENEROUSLY so they stand out from
-  // the thin skeleton rather than getting absorbed.
-  const hardCount = Math.floor(params.hard * 24);
-  const polys = [];
+  // === 7. Hard-edged polyhedra at a subset of nodes. Because they overlap
+  // the node's ball, they're structurally connected to the skeleton.
+  const hardCount = Math.floor(params.hard * 22);
   for (let i = 0; i < hardCount; i++) {
     const host = nodes[Math.floor(rng() * nodes.length)];
     if (!host) break;
-    // 0.04–0.09 in normalized coords — clearly larger than node joints.
-    const sz = 0.04 + rng() * 0.05;
-    polys.push({
+    const sz = Math.max(0.022, host.radius * 3) + rng() * 0.035;
+    prims.push({
       type: rng() < 0.55 ? 'box' : 'octa',
       x: host.x, y: host.y, z: host.z,
       size: sz,
@@ -705,28 +682,29 @@ function grow(params, rng) {
     });
   }
 
-  // Stage 10: interlocking tori — placed perpendicular to the midpoint of a
-  // random connection capsule so the capsule passes through the torus's
-  // hole. More of them, bigger, so the loops REGISTER as visual features.
-  const loopCount = Math.floor(params.loops * 22);
-  const tori = [];
-  const capsules = prims.filter(p => p.type === 'capsule');
-  for (let i = 0; i < loopCount && capsules.length; i++) {
-    const cap = capsules[Math.floor(rng() * capsules.length)];
-    const cx = (cap.x1 + cap.x2) / 2;
-    const cy = (cap.y1 + cap.y2) / 2;
-    const cz = (cap.z1 + cap.z2) / 2;
-    const ax = cap.x2 - cap.x1;
-    const ay = cap.y2 - cap.y1;
-    const az = cap.z2 - cap.z1;
+  // === 8. Interlocking tori — threaded around random parent→child edges.
+  // Their axis points along the edge, and the torus hole clears the edge's
+  // tube radius. The ring is topologically linked to the skeleton (can't
+  // slide off). Interlocks qualify as connected per spec.
+  const loopCount = Math.floor(params.loops * 20);
+  const parentEdges = [];
+  for (const n of nodes) if (n.parent) parentEdges.push(n);
+  for (let i = 0; i < loopCount && parentEdges.length; i++) {
+    const tip = parentEdges[Math.floor(rng() * parentEdges.length)];
+    const p = tip.parent;
+    const cx = (tip.x + p.x) / 2;
+    const cy = (tip.y + p.y) / 2;
+    const cz = (tip.z + p.z) / 2;
+    const ax = tip.x - p.x;
+    const ay = tip.y - p.y;
+    const az = tip.z - p.z;
     const aLen = Math.hypot(ax, ay, az) || 1;
-    // Major radius visibly larger than joint sizes — clear rings.
-    const major = 0.035 + rng() * 0.065;
-    // Thin tube so the ring doesn't look like a donut.
-    const minor = 0.006 + rng() * 0.008;
+    const edgeR = Math.min(tip.radius, p.radius);
+    const major = edgeR * 3 + rng() * 0.03;
+    const minor = 0.006 + rng() * 0.006;
     if (cx - major < lo || cx + major > hi || cy - major < lo || cy + major > hi ||
         cz - major < lo || cz + major > hi) continue;
-    tori.push({
+    prims.push({
       type: 'torus',
       x: cx, y: cy, z: cz,
       ax: ax / aLen, ay: ay / aLen, az: az / aLen,
@@ -734,24 +712,17 @@ function grow(params, rng) {
     });
   }
 
-  prims.push(...polys, ...tori);
-
-  // Stage 12: symmetry pass. Re-emits a mirrored / rotated copy of all
-  // additive primitives. Excluded: antiballs (would carve in symmetric
-  // pairs which often double-cancels) and the symmetry copies themselves
-  // (we only iterate over a snapshot taken before any copying).
+  // === 9. Symmetry pass. Replicates all primitives via reflection/rotation.
   const symMode = params.symmetry;
   if (symMode > 0) {
-    const snapshot = prims.slice(); // freeze before we add copies
+    const snapshot = prims.slice();
     const transforms = [];
     if (symMode === 1) {
-      // Bilateral about XZ plane.
       transforms.push((p) => mirrorAxis(p, 'x'));
     } else if (symMode === 2) {
       transforms.push((p) => mirrorAxis(p, 'x'));
       transforms.push((p) => mirrorAxis(p, 'z'));
     } else {
-      // 3,4,5,6-fold radial about Y.
       const N = symMode;
       for (let i = 1; i < N; i++) {
         const ang = (i / N) * Math.PI * 2;
@@ -825,7 +796,7 @@ async function buildSculptureAsync(params, onProgress) {
 
   onProgress(0.05); await nextFrame();
 
-  let prims = grow(params, rng);
+  let prims = spaceColonize(params, rng);
 
   onProgress(0.15); await nextFrame();
 
@@ -902,7 +873,9 @@ async function buildSculptureAsync(params, onProgress) {
     let g = null;
 
     if (p.type === 'ball') {
-      const r = p.size * 2 * scale * params.thickness;
+      // Radius is already baked into p.size by spaceColonize (Murray's law
+      // with thicknessScale), so no extra thickness multiplier here.
+      const r = p.size * 2 * scale;
       if (r < 0.2) { processed++; continue; }
       const w = Math.max(6, Math.round(8 * resF));
       const h = Math.max(5, Math.round(w * 0.7));
@@ -916,7 +889,7 @@ async function buildSculptureAsync(params, onProgress) {
       const x2 = toWorld(p.x2), y2 = toWorld(p.y2), z2 = toWorld(p.z2);
       const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
       const len = Math.hypot(dx, dy, dz);
-      const r = p.size * 2 * scale * params.thickness;
+      const r = p.size * 2 * scale;
       if (len < 0.1 || r < 0.15) { processed++; continue; }
       const segs = Math.max(5, Math.round(6 * resF));
       g = new THREE.CylinderGeometry(r, r, len, segs, 1, false).toNonIndexed();
@@ -936,7 +909,7 @@ async function buildSculptureAsync(params, onProgress) {
 
     } else if (p.type === 'torus') {
       const major = p.major * 2 * scale;
-      const minor = p.minor * 2 * scale * params.thickness;
+      const minor = p.minor * 2 * scale;
       if (minor < 0.15 || major < 0.3) { processed++; continue; }
       const big = Math.max(14, Math.round(20 * resF));
       const sml = Math.max(6, Math.round(8 * resF));
@@ -990,32 +963,28 @@ async function buildSculptureAsync(params, onProgress) {
 
 const sliders = {
   size: document.getElementById('s-size'),
-  nuc: document.getElementById('s-nuc'),
-  gen: document.getElementById('s-gen'),
-  rec: document.getElementById('s-rec'),
-  fert: document.getElementById('s-fert'),
-  mut: document.getElementById('s-mut'),
+  attr: document.getElementById('s-attr'),
+  seeds: document.getElementById('s-seeds'),
+  env: document.getElementById('s-env'),
+  jit: document.getElementById('s-jit'),
   cross: document.getElementById('s-cross'),
   hard: document.getElementById('s-hard'),
   loops: document.getElementById('s-loops'),
   sym: document.getElementById('s-sym'),
-  holes: document.getElementById('s-holes'),
   noise: document.getElementById('s-noise'),
   thick: document.getElementById('s-thick'),
   res: document.getElementById('s-res'),
 };
 const labels = {
   size: document.getElementById('v-size'),
-  nuc: document.getElementById('v-nuc'),
-  gen: document.getElementById('v-gen'),
-  rec: document.getElementById('v-rec'),
-  fert: document.getElementById('v-fert'),
-  mut: document.getElementById('v-mut'),
+  attr: document.getElementById('v-attr'),
+  seeds: document.getElementById('v-seeds'),
+  env: document.getElementById('v-env'),
+  jit: document.getElementById('v-jit'),
   cross: document.getElementById('v-cross'),
   hard: document.getElementById('v-hard'),
   loops: document.getElementById('v-loops'),
   sym: document.getElementById('v-sym'),
-  holes: document.getElementById('v-holes'),
   noise: document.getElementById('v-noise'),
   thick: document.getElementById('v-thick'),
   res: document.getElementById('v-res'),
@@ -1024,19 +993,19 @@ const labels = {
 function readParams() {
   return {
     size: parseFloat(sliders.size.value),
-    nuclei: parseInt(sliders.nuc.value, 10),
-    generations: parseInt(sliders.gen.value, 10),
-    recursion: parseInt(sliders.rec.value, 10),
-    fertility: parseFloat(sliders.fert.value) / 100,
-    mutation: parseFloat(sliders.mut.value) / 100,
+    attractors: parseInt(sliders.attr.value, 10),
+    seeds: parseInt(sliders.seeds.value, 10),
+    envelope: parseInt(sliders.env.value, 10),
+    jitter: parseFloat(sliders.jit.value) / 100,
     anastomosis: parseFloat(sliders.cross.value) / 100,
     hard: parseFloat(sliders.hard.value) / 100,
     loops: parseFloat(sliders.loops.value) / 100,
     symmetry: parseInt(sliders.sym.value, 10),
-    holes: parseFloat(sliders.holes.value) / 100,
     noise: parseFloat(sliders.noise.value) / 100,
-    // Primitive-size scale: 0.6× (spindly) to 1.6× (beefy).
+    // Primitive-size multiplier used both in spaceColonize (radii) and in
+    // buildSculptureAsync (extra scaling at render time).
     thickness: 0.6 + parseFloat(sliders.thick.value) / 100,
+    thicknessScale: 0.6 + parseFloat(sliders.thick.value) / 100,
     resolution: parseInt(sliders.res.value, 10),
     seed: currentSeed,
   };
@@ -1048,18 +1017,23 @@ const symLabel = (n) =>
   n === 2 ? '2-axis mirror' :
   `${n}-fold radial`;
 
+const envLabel = (n) =>
+  n === 0 ? 'sphere' :
+  n === 1 ? 'columnar' :
+  n === 2 ? 'discoid' :
+  n === 3 ? 'two-lobed' :
+  n === 4 ? 'shell' : 'sphere';
+
 function updateLabels() {
   labels.size.textContent = `${sliders.size.value} mm`;
-  labels.nuc.textContent = sliders.nuc.value;
-  labels.gen.textContent = sliders.gen.value;
-  labels.rec.textContent = sliders.rec.value;
-  labels.fert.textContent = `${sliders.fert.value}%`;
-  labels.mut.textContent = `${sliders.mut.value}%`;
+  labels.attr.textContent = sliders.attr.value;
+  labels.seeds.textContent = sliders.seeds.value;
+  labels.env.textContent = envLabel(parseInt(sliders.env.value, 10));
+  labels.jit.textContent = `${sliders.jit.value}%`;
   labels.cross.textContent = `${sliders.cross.value}%`;
   labels.hard.textContent = `${sliders.hard.value}%`;
   labels.loops.textContent = `${sliders.loops.value}%`;
   labels.sym.textContent = symLabel(parseInt(sliders.sym.value, 10));
-  labels.holes.textContent = `${sliders.holes.value}%`;
   labels.noise.textContent = `${sliders.noise.value}%`;
   labels.thick.textContent = `${sliders.thick.value}%`;
   labels.res.textContent = sliders.res.value;
@@ -1144,19 +1118,17 @@ for (const k of Object.keys(sliders)) {
 document.getElementById('reset').addEventListener('click', () => {
   currentSeed = 424242;
   sliders.size.value = 120;
-  sliders.nuc.value = 5;
-  sliders.gen.value = 5;
-  sliders.rec.value = 1;
-  sliders.fert.value = 85;
-  sliders.mut.value = 60;
-  sliders.cross.value = 60;
-  sliders.hard.value = 50;
-  sliders.loops.value = 55;
+  sliders.attr.value = 260;
+  sliders.seeds.value = 2;
+  sliders.env.value = 0;
+  sliders.jit.value = 30;
+  sliders.cross.value = 45;
+  sliders.hard.value = 40;
+  sliders.loops.value = 45;
   sliders.sym.value = 0;
-  sliders.holes.value = 35;
-  sliders.noise.value = 55;
-  sliders.thick.value = 40;
-  sliders.res.value = 96;
+  sliders.noise.value = 40;
+  sliders.thick.value = 50;
+  sliders.res.value = 88;
   scheduleRebuild();
 });
 
@@ -1167,19 +1139,17 @@ document.getElementById('randomize').addEventListener('click', () => {
   };
   currentSeed = (Math.random() * 1e9) | 0;
   sliders.size.value = rand(100, 180);
-  sliders.nuc.value = rand(2, 7);
-  sliders.gen.value = rand(4, 6);
-  sliders.rec.value = rand(0, 2);
-  sliders.fert.value = rand(60, 95);
-  sliders.mut.value = rand(30, 90);
+  sliders.attr.value = rand(150, 500, 10);
+  sliders.seeds.value = rand(1, 4);
+  sliders.env.value = rand(0, 4);
+  sliders.jit.value = rand(15, 60);
   sliders.cross.value = rand(15, 75);
-  sliders.hard.value = rand(15, 75);
+  sliders.hard.value = rand(10, 70);
   sliders.loops.value = rand(15, 65);
   // Symmetry: 60% chance of asymmetric, 40% chance of some symmetry.
   sliders.sym.value = Math.random() < 0.6 ? 0 : rand(1, 6);
-  sliders.holes.value = rand(15, 60);
-  sliders.noise.value = rand(25, 75);
-  sliders.thick.value = rand(30, 60);
+  sliders.noise.value = rand(25, 70);
+  sliders.thick.value = rand(35, 65);
   scheduleRebuild();
 });
 
