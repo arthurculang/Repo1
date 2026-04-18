@@ -160,11 +160,14 @@
     <button id="panel-toggle" type="button" aria-label="Toggle controls"></button>
     <h1>Organismal</h1>
     <div class="sub">
-      A generative sculpture grown from an implicit scalar field and
-      extracted as a single watertight mesh. Branching fractal seeds are
-      tiled with radial symmetry, perturbed by noise, and blended into a
-      continuous surface — watertight, self-supporting, and physically
-      unrealizable by any method other than 3D printing.
+      A free-form alien sculpture grown by simulation: random nuclei are
+      seeded, connected by a minimum spanning tree, then evolved through
+      several generations of branching, mutation and cross-fusion. Each
+      active tip can mutate direction, fork, die, or reach over and fuse
+      with a neighbor. Antiballs carve real negative space and a noise
+      field wrinkles the surface. The whole cloud is blended into a single
+      watertight mesh by marching cubes — physically unrealizable by any
+      method other than 3D printing.
     </div>
 
     <div class="actions">
@@ -181,28 +184,38 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Symmetry</label><span class="val" id="v-sym">5-fold</span></div>
-      <input type="range" id="s-sym" min="1" max="8" step="1" value="5" />
+      <div class="row"><label>Starting nuclei</label><span class="val" id="v-nuc">4</span></div>
+      <input type="range" id="s-nuc" min="1" max="8" step="1" value="4" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Branching depth</label><span class="val" id="v-depth">3</span></div>
-      <input type="range" id="s-depth" min="0" max="5" step="1" value="3" />
+      <div class="row"><label>Generations</label><span class="val" id="v-gen">4</span></div>
+      <input type="range" id="s-gen" min="2" max="7" step="1" value="4" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Branch spread</label><span class="val" id="v-spread">55%</span></div>
-      <input type="range" id="s-spread" min="10" max="95" step="1" value="55" />
+      <div class="row"><label>Fertility</label><span class="val" id="v-fert">70%</span></div>
+      <input type="range" id="s-fert" min="20" max="100" step="1" value="70" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Chaos</label><span class="val" id="v-chaos">25%</span></div>
-      <input type="range" id="s-chaos" min="0" max="100" step="1" value="25" />
+      <div class="row"><label>Mutation</label><span class="val" id="v-mut">45%</span></div>
+      <input type="range" id="s-mut" min="0" max="100" step="1" value="45" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Surface noise</label><span class="val" id="v-noise">30%</span></div>
-      <input type="range" id="s-noise" min="0" max="80" step="1" value="30" />
+      <div class="row"><label>Anastomosis</label><span class="val" id="v-cross">35%</span></div>
+      <input type="range" id="s-cross" min="0" max="100" step="1" value="35" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Holes</label><span class="val" id="v-holes">25%</span></div>
+      <input type="range" id="s-holes" min="0" max="100" step="1" value="25" />
+    </div>
+
+    <div class="slider">
+      <div class="row"><label>Surface noise</label><span class="val" id="v-noise">35%</span></div>
+      <input type="range" id="s-noise" min="0" max="80" step="1" value="35" />
     </div>
 
     <div class="slider">
@@ -344,188 +357,205 @@ function makeValueNoise(seed) {
   };
 }
 
-// A "seed" is a primitive added to the scalar field. Cylindrical coords so
-// the same primitive can be rotated into each radial sector cheaply.
-// kind: 'ball' | 'capsule'
-// For balls: (r, y) with anisotropy (rx, ry, rz) in local frame.
-// For capsules: (r, y) to (r2, y2), radius.
-function generateSeeds(params, rng, noise3d) {
-  const seeds = [];
+// Growth simulation. A node is an (x, y, z, size, dir, generation) tuple.
+// The algorithm:
+//   1. Scatter N starting nuclei in the interior of [0,1]^3.
+//   2. Connect them with a minimum spanning tree of capsules so the result
+//      is one connected component from the first frame.
+//   3. For G generations, every active node can — with probability fertility
+//      — spawn 1..3 children. Each child's direction is its parent's
+//      direction mixed with a random unit vector (mutation). Each child is
+//      joined to its parent by a capsule. Parents occasionally deactivate
+//      so growth propagates outward to tips.
+//   4. Anastomosis: with probability per generation, nearby non-adjacent
+//      nodes are fused by a bridge capsule (creates coral-like netting).
+//   5. Rosettes: random clusters of small balls blossom at active tips.
+//   6. Antiballs are seeded along the growth mass to carve real voids.
+//
+// Coordinates are cartesian [0,1]^3 throughout. No radial symmetry. No
+// central trunk. The resulting shape is irregular and alien.
 
-  // Thin vertical spine (one capsule) — provides internal connectivity
-  // without filling the interior the way a stack of fat balls did. Radius
-  // is deliberately small; branches attach via their own capsules.
-  seeds.push({
-    kind: 'capsule',
-    r1: 0, theta1: 0, y1: 0.18,
-    r2: 0, theta2: 0, y2: 0.86,
-    size: 0.028,
-    weight: 0.9,
-  });
+function randomUnitVec(rng) {
+  // Uniform on sphere: z ~ U(-1,1), theta ~ U(0, 2π).
+  const z = 2 * rng() - 1;
+  const t = rng() * Math.PI * 2;
+  const s = Math.sqrt(1 - z * z);
+  return { x: Math.cos(t) * s, y: Math.sin(t) * s, z };
+}
 
-  // Single wide foot at the bottom for tabletop stability.
-  seeds.push({
-    kind: 'ball',
-    r: 0, theta: 0, y: 0.16,
-    size: 0.085,
-    weight: 1.0,
-    flat: true,
-  });
+function mixDir(a, b, t) {
+  // Linear interpolate two unit vectors and renormalize.
+  const x = a.x * (1 - t) + b.x * t;
+  const y = a.y * (1 - t) + b.y * t;
+  const z = a.z * (1 - t) + b.z * t;
+  const L = Math.hypot(x, y, z) || 1;
+  return { x: x / L, y: y / L, z: z / L };
+}
 
-  // Primary limbs — placed in one angular sector, far enough from r=0
-  // that they don't fuse into the spine. Connected to the spine via a
-  // horizontal capsule so attachment is unambiguous.
-  const sectorWidth = Math.PI * 2 / params.symmetry;
-  const primaryCount = 3 + Math.floor(rng() * 2);
-  const primaries = [];
-  for (let i = 0; i < primaryCount; i++) {
-    const s = {
-      kind: 'ball',
-      r: 0.22 + rng() * 0.12,
-      theta: (i + 0.25 + rng() * 0.5) / primaryCount * sectorWidth,
-      y: 0.28 + rng() * 0.5,
-      size: 0.055 + rng() * 0.035,
-      weight: 0.95,
-    };
-    seeds.push(s);
-    primaries.push(s);
-    seeds.push({
-      kind: 'capsule',
-      r1: 0, theta1: 0, y1: s.y,
-      r2: s.r, theta2: s.theta, y2: s.y,
-      size: 0.023,
-      weight: 0.8,
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+// Minimum spanning tree over nuclei — N^2 algorithm, fine for small N.
+function mstConnect(nuclei, prims) {
+  if (nuclei.length < 2) return;
+  const inTree = new Set([0]);
+  while (inTree.size < nuclei.length) {
+    let bestA = -1, bestB = -1, bestD = Infinity;
+    for (let i = 0; i < nuclei.length; i++) {
+      if (!inTree.has(i)) continue;
+      for (let j = 0; j < nuclei.length; j++) {
+        if (inTree.has(j)) continue;
+        const d = dist(nuclei[i], nuclei[j]);
+        if (d < bestD) { bestD = d; bestA = i; bestB = j; }
+      }
+    }
+    const a = nuclei[bestA], b = nuclei[bestB];
+    prims.push({
+      type: 'capsule',
+      x1: a.x, y1: a.y, z1: a.z, x2: b.x, y2: b.y, z2: b.z,
+      size: Math.min(a.size, b.size) * 0.45,
+      weight: 0.9,
     });
+    inTree.add(bestB);
+  }
+}
+
+function grow(params, rng) {
+  const prims = [];
+
+  // Interior zone — stay back from grid edge so the seal can close cleanly.
+  const lo = 0.15, hi = 0.85;
+  const span = hi - lo;
+  const clamp = (v) => Math.max(lo, Math.min(hi, v));
+
+  // Stage 1: initial nuclei cloud.
+  const nodes = [];
+  const nuclei = [];
+  const nucCount = params.nuclei;
+  for (let i = 0; i < nucCount; i++) {
+    const n = {
+      x: lo + rng() * span,
+      y: lo + rng() * span,
+      z: lo + rng() * span,
+      size: 0.055 + rng() * 0.04,
+      dir: randomUnitVec(rng),
+      active: true,
+      generation: 0,
+      weight: 1.0,
+    };
+    nodes.push(n);
+    nuclei.push(n);
+    prims.push({ type: 'ball', x: n.x, y: n.y, z: n.z, size: n.size, weight: n.weight });
   }
 
-  // Recursive fractal branching — children grow FURTHER outward (larger r)
-  // at each depth, so the tree stays open and legible instead of collapsing
-  // back into the central mass. Sizes decay steeply so terminal twigs are
-  // fine.
-  function branch(parent, depth, maxDepth) {
-    if (depth >= maxDepth) return;
-    const children = 2 + Math.floor(rng() * 2);
-    const scale = Math.pow(0.58, depth + 1);
-    const spread = params.spread * 0.55;
-    const radialPush = 0.08 * (1 - depth / (maxDepth + 1));
-    for (let i = 0; i < children; i++) {
-      const dTheta = (rng() - 0.5) * spread;
-      const dR = radialPush + rng() * 0.14 * scale;
-      const dY = (rng() - 0.5) * 0.28 * scale;
-      const child = {
-        kind: 'ball',
-        r: Math.min(0.46, parent.r + dR),
-        theta: parent.theta + dTheta,
-        y: Math.max(0.12, Math.min(0.88, parent.y + dY)),
-        size: Math.max(0.016, parent.size * (0.48 + rng() * 0.2)),
-        weight: parent.weight * 0.88,
-      };
-      seeds.push({
-        kind: 'capsule',
-        r1: parent.r, theta1: parent.theta, y1: parent.y,
-        r2: child.r, theta2: child.theta, y2: child.y,
-        size: Math.max(0.013, child.size * 0.55),
-        weight: parent.weight * 0.8,
-      });
-      seeds.push(child);
+  // Stage 2: stitch the nuclei together so we always start connected.
+  mstConnect(nuclei, prims);
 
-      // Tight rosette at terminal tips — petals placed in 3D AROUND the
-      // child center, sized small enough that every petal fuses into it.
-      if (depth === maxDepth - 1 && rng() < 0.75) {
-        const petals = 3 + Math.floor(rng() * 4);
-        const pr = child.size * 0.85;
-        for (let p = 0; p < petals; p++) {
-          const pa = (p / petals) * Math.PI * 2 + rng() * 0.5;
-          const pb = (rng() - 0.5) * Math.PI;
-          const offX = Math.cos(pa) * Math.cos(pb) * pr;
-          const offZ = Math.sin(pa) * Math.cos(pb) * pr;
-          const offY = Math.sin(pb) * pr;
-          // Translate local xyz offset back to (r, theta, y).
-          const safeR = Math.max(0.02, child.r);
-          seeds.push({
-            kind: 'ball',
-            r: child.r + offX,
-            theta: child.theta + offZ / safeR,
-            y: child.y + offY,
-            size: child.size * 0.55,
-            weight: child.weight * 0.85,
+  // Stage 3: multi-generation growth.
+  const mutation = params.mutation;
+  const anast = params.anastomosis;
+  for (let gen = 1; gen <= params.generations; gen++) {
+    const spawned = [];
+    const scale = Math.pow(0.82, gen);
+
+    for (const p of nodes) {
+      if (!p.active) continue;
+      if (rng() > params.fertility) continue;
+      const children = 1 + Math.floor(rng() * (gen > 2 ? 3 : 2));
+      for (let c = 0; c < children; c++) {
+        // Direction: parent's direction blended with pure randomness via mutation.
+        const dir = mixDir(p.dir, randomUnitVec(rng), 0.25 + mutation * 0.75);
+        const step = (0.07 + rng() * 0.09) * scale;
+        const nx = p.x + dir.x * step;
+        const ny = p.y + dir.y * step;
+        const nz = p.z + dir.z * step;
+        // If out of zone, skip rather than clamp (clamping would fold branches back).
+        if (nx < lo || nx > hi || ny < lo || ny > hi || nz < lo || nz > hi) continue;
+        const child = {
+          x: nx, y: ny, z: nz,
+          size: Math.max(0.013, p.size * (0.55 + rng() * 0.25)),
+          dir,
+          active: true,
+          generation: gen,
+          weight: p.weight * 0.92,
+        };
+        spawned.push(child);
+        prims.push({ type: 'ball', x: child.x, y: child.y, z: child.z, size: child.size, weight: child.weight });
+        prims.push({
+          type: 'capsule',
+          x1: p.x, y1: p.y, z1: p.z, x2: child.x, y2: child.y, z2: child.z,
+          size: Math.min(p.size, child.size) * 0.55,
+          weight: p.weight * 0.85,
+        });
+      }
+      // Sometimes parents deactivate so growth is concentrated at tips.
+      if (rng() < 0.35 + mutation * 0.3) p.active = false;
+    }
+    nodes.push(...spawned);
+
+    // Stage 4: anastomosis — bridge nearby non-adjacent nodes.
+    if (anast > 0 && nodes.length > 4) {
+      const bridgeAttempts = Math.floor(anast * 6 * gen);
+      const maxD = 0.12 + anast * 0.08;
+      const minD = 0.025;
+      for (let b = 0; b < bridgeAttempts; b++) {
+        const a = nodes[Math.floor(rng() * nodes.length)];
+        let best = null, bestD = maxD;
+        for (const n of nodes) {
+          if (n === a) continue;
+          const d = dist(a, n);
+          if (d > minD && d < bestD) { best = n; bestD = d; }
+        }
+        if (best) {
+          prims.push({
+            type: 'capsule',
+            x1: a.x, y1: a.y, z1: a.z, x2: best.x, y2: best.y, z2: best.z,
+            size: Math.min(a.size, best.size) * 0.42,
+            weight: 0.75,
           });
         }
       }
-
-      branch(child, depth + 1, maxDepth);
     }
   }
-  for (const p of primaries) branch(p, 0, params.depth);
 
-  // Antiballs — negative-strength field contributions that CARVE holes
-  // through the surface. Placed along primary limbs so they punch through
-  // existing material and create real gaps / intricate negative space.
-  const holeCount = 2 + Math.floor(rng() * 4);
+  // Stage 5: rosettes at a subset of tips — small petals fused to the tip.
+  for (const n of nodes) {
+    if (!n.active) continue;
+    if (rng() > 0.55) continue;
+    const petals = 3 + Math.floor(rng() * 4);
+    const pr = n.size * 0.9;
+    for (let p = 0; p < petals; p++) {
+      const d = randomUnitVec(rng);
+      const px = n.x + d.x * pr;
+      const py = n.y + d.y * pr;
+      const pz = n.z + d.z * pr;
+      if (px < lo || px > hi || py < lo || py > hi || pz < lo || pz > hi) continue;
+      prims.push({
+        type: 'ball',
+        x: px, y: py, z: pz,
+        size: n.size * (0.45 + rng() * 0.25),
+        weight: n.weight * 0.9,
+      });
+    }
+  }
+
+  // Stage 6: antiballs — negative-strength spheres that carve holes.
+  const holeCount = Math.floor(params.holes * 22);
   for (let i = 0; i < holeCount; i++) {
-    const host = primaries[i % primaries.length];
-    seeds.push({
-      kind: 'antiball',
-      r: host.r * (0.3 + rng() * 0.8),
-      theta: host.theta + (rng() - 0.5) * 0.3,
-      y: host.y + (rng() - 0.5) * 0.18,
-      size: 0.04 + rng() * 0.04,
-      weight: 0.9 + rng() * 0.4,
+    const host = nodes[Math.floor(rng() * nodes.length)];
+    const d = randomUnitVec(rng);
+    const off = host.size * (0.3 + rng() * 1.1);
+    prims.push({
+      type: 'antiball',
+      x: clamp(host.x + d.x * off),
+      y: clamp(host.y + d.y * off),
+      z: clamp(host.z + d.z * off),
+      size: 0.035 + rng() * 0.045,
+      weight: 1.0 + rng() * 0.3,
     });
   }
 
-  // Chaos seeds: placed NEAR existing primaries (not scattered) so they
-  // attach to the main body. Given full-circle theta (not sector-aligned),
-  // they break symmetry without detaching.
-  const chaosCount = Math.floor(params.chaos * 14);
-  for (let i = 0; i < chaosCount; i++) {
-    const host = primaries[Math.floor(rng() * primaries.length)];
-    seeds.push({
-      kind: 'ball',
-      r: Math.max(0.06, host.r + (rng() - 0.5) * 0.12),
-      theta: rng() * Math.PI * 2,
-      y: Math.max(0.14, Math.min(0.86, host.y + (rng() - 0.5) * 0.15)),
-      size: 0.022 + rng() * 0.04,
-      weight: 0.55 + rng() * 0.25,
-      asymmetric: true,
-    });
-  }
-
-  return seeds;
-}
-
-// Convert seeds to field primitives laid out in 3D with N-fold replication.
-function seedsToPrimitives(seeds, params) {
-  const N = params.symmetry;
-  const prims = [];
-  for (const s of seeds) {
-    const copies = s.asymmetric ? 1 : N;
-    for (let n = 0; n < copies; n++) {
-      const rotation = (n / N) * Math.PI * 2;
-      if (s.kind === 'ball' || s.kind === 'antiball') {
-        const theta = s.theta + rotation;
-        prims.push({
-          type: s.kind,
-          x: 0.5 + Math.cos(theta) * s.r,
-          y: s.y,
-          z: 0.5 + Math.sin(theta) * s.r,
-          size: s.size,
-          flat: !!s.flat,
-          weight: s.weight,
-        });
-      } else if (s.kind === 'capsule') {
-        const t1 = s.theta1 + rotation;
-        const t2 = s.theta2 + rotation;
-        prims.push({
-          type: 'capsule',
-          x1: 0.5 + Math.cos(t1) * s.r1, y1: s.y1, z1: 0.5 + Math.sin(t1) * s.r1,
-          x2: 0.5 + Math.cos(t2) * s.r2, y2: s.y2, z2: 0.5 + Math.sin(t2) * s.r2,
-          size: s.size,
-          weight: s.weight,
-        });
-      }
-    }
-  }
   return prims;
 }
 
@@ -543,8 +573,7 @@ async function buildSculptureAsync(params, onProgress) {
 
   onProgress(0.05); await nextFrame();
 
-  const seeds = generateSeeds(params, rng, noise3d);
-  const prims = seedsToPrimitives(seeds, params);
+  const prims = grow(params, rng);
 
   onProgress(0.12); await nextFrame();
 
@@ -686,20 +715,24 @@ async function buildSculptureAsync(params, onProgress) {
 
 const sliders = {
   size: document.getElementById('s-size'),
-  sym: document.getElementById('s-sym'),
-  depth: document.getElementById('s-depth'),
-  spread: document.getElementById('s-spread'),
-  chaos: document.getElementById('s-chaos'),
+  nuc: document.getElementById('s-nuc'),
+  gen: document.getElementById('s-gen'),
+  fert: document.getElementById('s-fert'),
+  mut: document.getElementById('s-mut'),
+  cross: document.getElementById('s-cross'),
+  holes: document.getElementById('s-holes'),
   noise: document.getElementById('s-noise'),
   thick: document.getElementById('s-thick'),
   res: document.getElementById('s-res'),
 };
 const labels = {
   size: document.getElementById('v-size'),
-  sym: document.getElementById('v-sym'),
-  depth: document.getElementById('v-depth'),
-  spread: document.getElementById('v-spread'),
-  chaos: document.getElementById('v-chaos'),
+  nuc: document.getElementById('v-nuc'),
+  gen: document.getElementById('v-gen'),
+  fert: document.getElementById('v-fert'),
+  mut: document.getElementById('v-mut'),
+  cross: document.getElementById('v-cross'),
+  holes: document.getElementById('v-holes'),
   noise: document.getElementById('v-noise'),
   thick: document.getElementById('v-thick'),
   res: document.getElementById('v-res'),
@@ -708,14 +741,13 @@ const labels = {
 function readParams() {
   return {
     size: parseFloat(sliders.size.value),
-    symmetry: parseInt(sliders.sym.value, 10),
-    depth: parseInt(sliders.depth.value, 10),
-    spread: parseFloat(sliders.spread.value) / 100,
-    chaos: parseFloat(sliders.chaos.value) / 100,
+    nuclei: parseInt(sliders.nuc.value, 10),
+    generations: parseInt(sliders.gen.value, 10),
+    fertility: parseFloat(sliders.fert.value) / 100,
+    mutation: parseFloat(sliders.mut.value) / 100,
+    anastomosis: parseFloat(sliders.cross.value) / 100,
+    holes: parseFloat(sliders.holes.value) / 100,
     noise: parseFloat(sliders.noise.value) / 100,
-    // MarchingCubes isolation — higher = thinner/tighter surface; must be
-    // large enough that individual metaballs don't all merge into one blob
-    // filling the grid. Map slider 15%→thin(120), 75%→thick(60).
     thickness: 60 + (1 - parseFloat(sliders.thick.value) / 100) * 80,
     resolution: parseInt(sliders.res.value, 10),
     seed: currentSeed,
@@ -724,11 +756,12 @@ function readParams() {
 
 function updateLabels() {
   labels.size.textContent = `${sliders.size.value} mm`;
-  const n = parseInt(sliders.sym.value, 10);
-  labels.sym.textContent = n === 1 ? 'asymmetric' : `${n}-fold`;
-  labels.depth.textContent = sliders.depth.value;
-  labels.spread.textContent = `${sliders.spread.value}%`;
-  labels.chaos.textContent = `${sliders.chaos.value}%`;
+  labels.nuc.textContent = sliders.nuc.value;
+  labels.gen.textContent = sliders.gen.value;
+  labels.fert.textContent = `${sliders.fert.value}%`;
+  labels.mut.textContent = `${sliders.mut.value}%`;
+  labels.cross.textContent = `${sliders.cross.value}%`;
+  labels.holes.textContent = `${sliders.holes.value}%`;
   labels.noise.textContent = `${sliders.noise.value}%`;
   labels.thick.textContent = `${sliders.thick.value}%`;
   labels.res.textContent = sliders.res.value;
@@ -813,11 +846,13 @@ for (const k of Object.keys(sliders)) {
 document.getElementById('reset').addEventListener('click', () => {
   currentSeed = 424242;
   sliders.size.value = 120;
-  sliders.sym.value = 5;
-  sliders.depth.value = 3;
-  sliders.spread.value = 55;
-  sliders.chaos.value = 25;
-  sliders.noise.value = 30;
+  sliders.nuc.value = 4;
+  sliders.gen.value = 4;
+  sliders.fert.value = 70;
+  sliders.mut.value = 45;
+  sliders.cross.value = 35;
+  sliders.holes.value = 25;
+  sliders.noise.value = 35;
   sliders.thick.value = 45;
   sliders.res.value = 72;
   scheduleRebuild();
@@ -830,12 +865,14 @@ document.getElementById('randomize').addEventListener('click', () => {
   };
   currentSeed = (Math.random() * 1e9) | 0;
   sliders.size.value = rand(100, 180);
-  sliders.sym.value = rand(1, 8);
-  sliders.depth.value = rand(2, 5);
-  sliders.spread.value = rand(25, 90);
-  sliders.chaos.value = rand(0, 70);
-  sliders.noise.value = rand(10, 65);
-  sliders.thick.value = rand(30, 65);
+  sliders.nuc.value = rand(2, 7);
+  sliders.gen.value = rand(3, 6);
+  sliders.fert.value = rand(55, 95);
+  sliders.mut.value = rand(30, 90);
+  sliders.cross.value = rand(10, 75);
+  sliders.holes.value = rand(5, 60);
+  sliders.noise.value = rand(15, 70);
+  sliders.thick.value = rand(30, 60);
   scheduleRebuild();
 });
 
