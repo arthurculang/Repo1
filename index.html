@@ -525,35 +525,48 @@ async function buildSculptureAsync(params, onProgress) {
   effect.isolation = params.thickness;
   effect.reset();
 
-  const subtract = 12;
+  // For an isosurface at `isolation`, a single addBall of `strength` produces
+  // a visible metaball whose normalized radius satisfies
+  //   r² ≈ strength / (isolation + subtract) - ε
+  // So to get visible radius r_vis, pick strength = r_vis² * (iso + subtract).
+  // We pick subtract=14 for moderately tight falloff (distinct bumps that
+  // still merge smoothly where they overlap into one connected mass).
+  const subtract = 14;
+  const iso = params.thickness;
+  const strengthFor = (r_vis, weight) =>
+    Math.max(0.04, r_vis * r_vis * (iso + subtract) * weight);
+
   for (const p of prims) {
     if (p.type === 'ball') {
-      // Metaball strength: tuned so p.size (≈0.03–0.15 in [0,1] coords) gives
-      // visible blobs without blowing out the whole field.
-      const strength = Math.max(0.25, p.size * p.size * 90 * p.weight);
-      effect.addBall(p.x, p.y, p.z, strength, subtract);
+      effect.addBall(p.x, p.y, p.z, strengthFor(p.size, p.weight), subtract);
     } else if (p.type === 'capsule') {
       const dx = p.x2 - p.x1, dy = p.y2 - p.y1, dz = p.z2 - p.z1;
       const len = Math.hypot(dx, dy, dz);
-      const steps = Math.max(3, Math.ceil(len * res * 0.5));
-      const strength = Math.max(0.2, p.size * p.size * 65 * p.weight);
+      // Sparse chain — just enough overlap to fuse into a continuous tube
+      // between parent and child without flooding the field with balls.
+      const steps = Math.max(2, Math.ceil(len / Math.max(0.015, p.size * 1.2)));
+      const stepStrength = strengthFor(p.size, p.weight * 0.9);
       for (let i = 0; i <= steps; i++) {
         const t = i / steps;
-        effect.addBall(p.x1 + dx * t, p.y1 + dy * t, p.z1 + dz * t, strength, subtract);
+        effect.addBall(p.x1 + dx * t, p.y1 + dy * t, p.z1 + dz * t, stepStrength, subtract);
       }
     }
   }
 
   onProgress(0.55); await nextFrame();
 
-  // Noise perturbation: walk only through cells with non-trivial field
-  // so we don't pay for empty space. Indexed z * size² + y * size + x.
+  // Noise perturbation of the field — scaled relative to isolation so it
+  // dimples the surface without punching through it. Only touch cells near
+  // the isosurface (field within ±40% of isolation) to limit cost and keep
+  // the interior solid.
   if (params.noise > 0) {
     const field = effect.field;
     const size = effect.size;
     const size2 = size * size;
-    const freq = 2.5 + params.noise * 9;
-    const amp = params.noise * 18;
+    const freq = 3 + params.noise * 10;
+    const amp = params.noise * iso * 0.28;
+    const loMask = iso * 0.55;
+    const hiMask = iso * 1.8;
     for (let z = 0; z < size; z++) {
       const nz = z / size * freq;
       for (let y = 0; y < size; y++) {
@@ -561,7 +574,7 @@ async function buildSculptureAsync(params, onProgress) {
         for (let x = 0; x < size; x++) {
           const i = z * size2 + y * size + x;
           const v = field[i];
-          if (v > 0.3 && v < params.thickness * 6) {
+          if (v > loMask && v < hiMask) {
             const nx = x / size * freq;
             const n = noise3d(nx, ny, nz) - 0.5;
             const n2 = noise3d(nx * 2.3, ny * 2.3, nz * 2.3) - 0.5;
@@ -631,9 +644,10 @@ function readParams() {
     spread: parseFloat(sliders.spread.value) / 100,
     chaos: parseFloat(sliders.chaos.value) / 100,
     noise: parseFloat(sliders.noise.value) / 100,
-    // MarchingCubes isolation — higher = thinner surface. Map slider to a
-    // useful range (roughly 3.0 thick → 12.0 thin).
-    thickness: 3 + (1 - parseFloat(sliders.thick.value) / 100) * 10,
+    // MarchingCubes isolation — higher = thinner/tighter surface; must be
+    // large enough that individual metaballs don't all merge into one blob
+    // filling the grid. Map slider 15%→thin(120), 75%→thick(60).
+    thickness: 60 + (1 - parseFloat(sliders.thick.value) / 100) * 80,
     resolution: parseInt(sliders.res.value, 10),
     seed: currentSeed,
   };
