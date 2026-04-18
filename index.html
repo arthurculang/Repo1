@@ -447,8 +447,12 @@ function buildBridge(curveA, tA, curveB, tB, params, seed) {
 }
 
 // A knob / bulb fused to a strand at a given point — adds organic detail.
+// Use SphereGeometry (indexed) so it merges cleanly with TubeGeometry /
+// TorusGeometry; IcosahedronGeometry is non-indexed and breaks the merge.
 function buildBulb(point, radius, detail) {
-  const g = new THREE.IcosahedronGeometry(radius, Math.max(1, Math.floor(detail / 18)));
+  const w = Math.max(10, Math.floor(detail / 2));
+  const h = Math.max(8, Math.floor(w * 0.75));
+  const g = new THREE.SphereGeometry(radius, w, h);
   g.translate(point.x, point.y, point.z);
   return g;
 }
