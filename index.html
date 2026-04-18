@@ -144,10 +144,11 @@
     <button id="panel-toggle" type="button" aria-label="Toggle controls"></button>
     <h1>Captive Lattice</h1>
     <div class="sub">
-      A generative sculpture: a twisted outer cage surrounding a free-floating
-      chain of interlocking rings. The chain is enclosed — it cannot be inserted
-      after the fact — which makes the object printable only as a single
-      piece on a 3D printer.
+      An organic tangle of wandering tubes, cross-bridges and knobs, with
+      an optional captive chain threaded through one of the strands. Every
+      piece is fused to the whole or topologically interlocked — nothing
+      floats free, and the base ring keeps it standing on a table.
+      Tap <em>Randomize</em> for a new creature.
     </div>
 
     <div class="slider">
@@ -161,13 +162,13 @@
     </div>
 
     <div class="slider">
-      <div class="row"><label>Cage twist</label><span class="val" id="v-twist">220°</span></div>
-      <input type="range" id="s-twist" min="0" max="720" step="5" value="220" />
+      <div class="row"><label>Wildness</label><span class="val" id="v-twist">420°</span></div>
+      <input type="range" id="s-twist" min="0" max="720" step="5" value="420" />
     </div>
 
     <div class="slider">
-      <div class="row"><label>Cage bars</label><span class="val" id="v-bars">6</span></div>
-      <input type="range" id="s-bars" min="3" max="12" step="1" value="6" />
+      <div class="row"><label>Strands</label><span class="val" id="v-bars">7</span></div>
+      <input type="range" id="s-bars" min="3" max="12" step="1" value="7" />
     </div>
 
     <div class="slider">
@@ -283,106 +284,258 @@ scene.add(sculptureGroup);
 
 // --- Geometry builders ---
 
-// Build one twisted cage bar that follows the silhouette profile.
-function buildCageBar(params, barIndex) {
-  const { height, radius, twistRad, barThickness, pinch, detail, bars } = params;
-  const segments = Math.max(60, Math.floor(height / 2));
-  const path = new THREE.CurvePath();
-
-  const points = [];
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    const y = -height / 2 + t * height;
-
-    // silhouette: pinched at the waist, bulging slightly at ends
-    const waist = 1 - pinch * Math.sin(Math.PI * t);
-    const bulge = 1 + 0.08 * Math.sin(Math.PI * t * 2);
-    const r = radius * waist * bulge;
-
-    const theta = (barIndex / bars) * Math.PI * 2 + t * twistRad;
-    points.push(new THREE.Vector3(
-      Math.cos(theta) * r,
-      y,
-      Math.sin(theta) * r
-    ));
-  }
-  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.2);
-  const tubularSegments = Math.max(80, Math.floor(segments * 1.2));
-  const radialSegments = Math.max(6, Math.floor(detail / 3));
-  return new THREE.TubeGeometry(curve, tubularSegments, barThickness, radialSegments, false);
+// Seeded PRNG so a given sculpture is reproducible while sliders tweak it.
+function mulberry32(a) {
+  return function() {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-// End caps (top and bottom rings) that hold the bars together.
-function buildEndRing(params, y) {
+let currentSeed = (Math.random() * 1e9) | 0;
+
+// Smooth pseudo-noise: sum of sines with seeded random phases.
+function makeNoise1D(rng, octaves = 3) {
+  const freqs = [], phases = [], amps = [];
+  let ampSum = 0;
+  for (let i = 0; i < octaves; i++) {
+    freqs.push(1 + i * (1.7 + rng() * 0.6));
+    phases.push(rng() * Math.PI * 2);
+    const a = 1 / (i + 1);
+    amps.push(a);
+    ampSum += a;
+  }
+  return (t) => {
+    let n = 0;
+    for (let i = 0; i < freqs.length; i++) {
+      n += Math.sin(t * Math.PI * 2 * freqs[i] + phases[i]) * amps[i];
+    }
+    return n / ampSum;
+  };
+}
+
+// Build one wandering organic strand running from the bottom ring to the top.
+// Each strand is anchored at both ends to the base/top ring so the whole
+// sculpture is a single connected object.
+function buildOrganicStrand(params, index, seed) {
+  const { height, radius, twistRad, barThickness, pinch, detail, bars, wildness } = params;
+  const rng = mulberry32(seed + index * 1337 + 7);
+
+  const baseTheta = (index / bars) * Math.PI * 2 + (rng() - 0.5) * 0.35;
+  const twistDir = rng() < 0.5 ? 1 : -1;
+  const twistAmt = twistRad * (0.3 + rng() * 0.9) * twistDir;
+
+  const segments = 36 + Math.floor(rng() * 20);
+  const radiusNoise = makeNoise1D(rng, 3);
+  const thetaNoise = makeNoise1D(rng, 3);
+  const yNoise = makeNoise1D(rng, 2);
+
+  const rAmp = radius * (0.25 + wildness * 0.65);
+  const tAmp = 0.4 + wildness * 1.6;
+  const yAmp = height * 0.04 * wildness;
+
+  const points = [];
+  // Slight random offset of the anchor along the base ring so strands don't
+  // always hit the ring at the same theta — more organic rooting.
+  const anchorJitter = (rng() - 0.5) * 0.25;
+
+  // Allow the strand to exit the central column — go high, cross the middle,
+  // dive low — by adding a big offset path.
+  const excursion = (rng() < 0.5 ? 1 : -1) * radius * (0.15 + wildness * 0.7);
+  const excursionAxis = rng() * Math.PI * 2;
+
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const envelope = Math.sin(Math.PI * t); // 0 at ends, 1 in middle
+
+    const profile = 0.55 + 0.45 * envelope;
+    const waist = 1 - pinch * Math.sin(Math.PI * t * (1 + rng() * 0.3));
+    let r = radius * profile * waist + radiusNoise(t + rng() * 0.1) * rAmp * envelope;
+    r = Math.max(radius * 0.15, r);
+
+    let theta = baseTheta + twistAmt * t + thetaNoise(t) * tAmp * envelope;
+
+    // Perpendicular excursion: push strand sideways from its circle, so it
+    // can loop through the interior instead of staying on the outer shell.
+    const ex = excursion * envelope;
+    let x = Math.cos(theta) * r + Math.cos(excursionAxis) * ex * thetaNoise(t + 0.3);
+    let z = Math.sin(theta) * r + Math.sin(excursionAxis) * ex * thetaNoise(t + 0.7);
+    let y = -height / 2 + t * height + yNoise(t) * yAmp;
+
+    // Anchor endpoints exactly on the ring so tubes fuse to it when printed.
+    if (i === 0) {
+      const aTheta = baseTheta + anchorJitter;
+      x = Math.cos(aTheta) * radius;
+      z = Math.sin(aTheta) * radius;
+      y = -height / 2;
+    }
+    if (i === segments) {
+      const aTheta = baseTheta + twistAmt + (rng() - 0.5) * 0.25;
+      x = Math.cos(aTheta) * radius * (0.75 + rng() * 0.2);
+      z = Math.sin(aTheta) * radius * (0.75 + rng() * 0.2);
+      y = height / 2;
+    }
+
+    points.push(new THREE.Vector3(x, y, z));
+  }
+
+  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5);
+  const tubularSegments = Math.max(80, segments * 3);
+  const radialSegments = Math.max(6, Math.floor(detail / 3));
+  // Slight variation in tube thickness across strands for organic feel.
+  const thickness = barThickness * (0.85 + rng() * 0.4);
+  return { geo: new THREE.TubeGeometry(curve, tubularSegments, thickness, radialSegments, false), curve };
+}
+
+// Organic closed loop used for the top/bottom "rings" — wavy, irregular,
+// still fully closed so the base is stable on a table.
+function buildOrganicLoop(params, y, seed, subseed) {
   const { radius, barThickness, detail, pinch } = params;
-  // match the silhouette at the end: t=0 or t=1 → waist = 1
-  const tubeR = barThickness * 1.1;
-  const geo = new THREE.TorusGeometry(radius * (1 - pinch * 0), tubeR, Math.max(8, detail / 3), Math.max(24, detail * 2));
-  geo.rotateX(Math.PI / 2);
-  geo.translate(0, y, 0);
+  const rng = mulberry32(seed + subseed);
+  const loopNoise = makeNoise1D(rng, 3);
+  const segments = 96;
+  const points = [];
+  const tubeR = barThickness * 1.15;
+  const wobble = radius * 0.12;
+  for (let i = 0; i < segments; i++) {
+    const t = i / segments;
+    const theta = t * Math.PI * 2;
+    const r = radius + loopNoise(t) * wobble;
+    const yy = y + loopNoise(t + 0.5) * radius * 0.05;
+    points.push(new THREE.Vector3(Math.cos(theta) * r, yy, Math.sin(theta) * r));
+  }
+  const curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.5);
+  return new THREE.TubeGeometry(curve, segments * 2, tubeR, Math.max(8, Math.floor(detail / 3)), true);
+}
+
+// A curved tube bridging two points on two different strands — creates
+// cross-connections so the mesh feels netlike instead of a series of parallel
+// ribs. Bridges physically intersect both strands, so they fuse when printed.
+function buildBridge(curveA, tA, curveB, tB, params, seed) {
+  const { barThickness, detail } = params;
+  const rng = mulberry32(seed);
+  const pA = curveA.getPoint(tA);
+  const pB = curveB.getPoint(tB);
+  const mid = pA.clone().lerp(pB, 0.5);
+  // Offset mid perpendicular for an arc.
+  const away = new THREE.Vector3(mid.x, 0, mid.z).normalize();
+  const sign = rng() < 0.5 ? 1 : -1;
+  mid.addScaledVector(away, sign * pA.distanceTo(pB) * (0.15 + rng() * 0.2));
+  mid.y += (rng() - 0.5) * pA.distanceTo(pB) * 0.25;
+  const curve = new THREE.CatmullRomCurve3([pA, mid, pB], false, 'catmullrom', 0.5);
+  const thickness = barThickness * (0.55 + rng() * 0.35);
+  return new THREE.TubeGeometry(curve, 24, thickness, Math.max(6, Math.floor(detail / 3)), false);
+}
+
+// A knob / bulb fused to a strand at a given point — adds organic detail.
+function buildBulb(point, radius, detail) {
+  const g = new THREE.IcosahedronGeometry(radius, Math.max(1, Math.floor(detail / 18)));
+  g.translate(point.x, point.y, point.z);
+  return g;
+}
+
+// Build a torus oriented so a given strand tangent passes through its hole —
+// the ring is threaded ON the strand and cannot come off.
+function ringAroundStrand(curve, tAt, majorR, minorR, detail) {
+  const p = curve.getPoint(tAt);
+  const tan = curve.getTangent(tAt).normalize();
+  const geo = new THREE.TorusGeometry(majorR, minorR, Math.max(8, Math.floor(detail / 3)), Math.max(28, detail * 2));
+  // Default torus axis is +Z; rotate so axis aligns with the strand tangent.
+  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), tan);
+  geo.applyQuaternion(q);
+  geo.translate(p.x, p.y, p.z);
   return geo;
 }
 
-// A chain of interlocking rings trapped inside the cage.
-// Each successive ring is rotated 90° around a different axis so they're linked.
-function buildCaptiveChain(params) {
-  const { height, radius, linkCount, linkThickness, pinch, detail } = params;
-  if (linkCount <= 0) return null;
-
-  const geos = [];
-  // Room available at centerline: slightly less than smallest waist radius
-  const minWaist = radius * (1 - pinch);
-  const maxMajor = Math.min(minWaist * 0.55, height / (linkCount + 1) * 0.9);
-  const major = Math.max(8, maxMajor);
-  const minor = linkThickness * 0.9;
-
-  // Stack chain vertically, centered.
-  const span = (linkCount - 1) * major * 0.95;
-  const y0 = -span / 2;
-
-  for (let i = 0; i < linkCount; i++) {
-    const y = y0 + i * major * 0.95;
-    const geo = new THREE.TorusGeometry(
-      major,
-      minor,
-      Math.max(8, detail / 3),
-      Math.max(24, detail * 2)
-    );
-    // Alternate orientation so each ring links through the previous one.
-    if (i % 2 === 0) {
-      geo.rotateY(Math.PI / 2); // ring in YZ plane
-    } else {
-      geo.rotateX(Math.PI / 2); // ring in XY plane
-    }
-    geo.translate(0, y, 0);
-    geos.push(geo);
-  }
-  return mergeGeometries(geos, false);
-}
-
-// Central captive orb suspended by nothing — floats inside.
-// (Only visually; it gets merged into the same STL, so the printer prints it
-// resting on supports that snap off, or free inside if the link chain holds it.)
-function buildCoreOrb(params) {
-  const { radius, pinch, detail, linkCount } = params;
-  if (linkCount > 0) return null; // skip if we have a chain already
-  const r = radius * (1 - pinch) * 0.35;
-  return new THREE.IcosahedronGeometry(r, Math.max(1, Math.floor(detail / 12)));
+// A ring that passes through an existing ring (classic chain link).
+// Place the new ring centered on a point on the old ring's circle, with
+// axis tangent to that circle (so the old ring's body passes through the
+// new ring's hole).
+function ringLinkedTo(prev, majorR, minorR, detail, angle) {
+  // prev = { center, axis (Vec3), major, minor }
+  // Pick a point on prev's circle at `angle` around its axis.
+  const u = new THREE.Vector3(1, 0, 0);
+  if (Math.abs(prev.axis.dot(u)) > 0.9) u.set(0, 1, 0);
+  const basisA = new THREE.Vector3().crossVectors(prev.axis, u).normalize();
+  const basisB = new THREE.Vector3().crossVectors(prev.axis, basisA).normalize();
+  const pt = prev.center.clone()
+    .addScaledVector(basisA, Math.cos(angle) * prev.major)
+    .addScaledVector(basisB, Math.sin(angle) * prev.major);
+  // New ring axis is tangent to prev's circle at that point.
+  const tan = basisA.clone().multiplyScalar(-Math.sin(angle))
+    .addScaledVector(basisB, Math.cos(angle)).normalize();
+  const geo = new THREE.TorusGeometry(majorR, minorR, Math.max(8, Math.floor(detail / 3)), Math.max(28, detail * 2));
+  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), tan);
+  geo.applyQuaternion(q);
+  geo.translate(pt.x, pt.y, pt.z);
+  return { geo, center: pt, axis: tan, major: majorR, minor: minorR };
 }
 
 function buildSculpture(params) {
+  const seed = params.seed;
+  const rng = mulberry32(seed + 999);
   const geos = [];
+  const strandCurves = [];
+
+  // Strands (wandering organic tubes from bottom ring to top ring).
   for (let i = 0; i < params.bars; i++) {
-    geos.push(buildCageBar(params, i));
+    const s = buildOrganicStrand(params, i, seed);
+    geos.push(s.geo);
+    strandCurves.push(s.curve);
   }
-  geos.push(buildEndRing(params, -params.height / 2));
-  geos.push(buildEndRing(params, params.height / 2));
 
-  const chain = buildCaptiveChain(params);
-  if (chain) geos.push(chain);
+  // Base and top rings — wavy, but closed (stable base on a table).
+  geos.push(buildOrganicLoop(params, -params.height / 2, seed, 1));
+  geos.push(buildOrganicLoop(params, params.height / 2, seed, 2));
 
-  const orb = buildCoreOrb(params);
-  if (orb) geos.push(orb);
+  // Cross-bridges between strands to make it netlike.
+  const bridgeCount = Math.max(2, Math.floor(params.bars * 0.8 + rng() * 3));
+  for (let i = 0; i < bridgeCount; i++) {
+    const a = Math.floor(rng() * strandCurves.length);
+    let b = Math.floor(rng() * strandCurves.length);
+    if (b === a) b = (a + 1) % strandCurves.length;
+    const tA = 0.2 + rng() * 0.6;
+    const tB = tA + (rng() - 0.5) * 0.2;
+    geos.push(buildBridge(strandCurves[a], tA, strandCurves[b], Math.min(0.85, Math.max(0.15, tB)), params, seed + i * 31));
+  }
+
+  // Organic knobs fused onto strands.
+  const bulbCount = Math.floor(params.bars * 1.2 + rng() * 4);
+  for (let i = 0; i < bulbCount; i++) {
+    const c = strandCurves[Math.floor(rng() * strandCurves.length)];
+    const t = 0.1 + rng() * 0.8;
+    const p = c.getPoint(t);
+    const r = params.barThickness * (1.2 + rng() * 1.3);
+    geos.push(buildBulb(p, r, params.detail));
+  }
+
+  // Captive chain: first ring is threaded on a strand (interlocked with the
+  // cage so it can't separate); each subsequent ring links through the last.
+  if (params.linkCount > 0) {
+    const hostIdx = Math.floor(rng() * strandCurves.length);
+    const host = strandCurves[hostIdx];
+    const tHost = 0.35 + rng() * 0.3;
+    const minor = params.linkThickness * 0.9;
+    const major = Math.max(
+      params.barThickness * 3 + minor * 2,
+      Math.min(params.radius * 0.4, params.height / (params.linkCount + 2))
+    );
+    const firstGeo = ringAroundStrand(host, tHost, major, minor, params.detail);
+    geos.push(firstGeo);
+    // Track the first ring's logical state for chaining.
+    const hostPt = host.getPoint(tHost);
+    const hostTan = host.getTangent(tHost).normalize();
+    let prev = { center: hostPt, axis: hostTan, major, minor };
+    for (let i = 1; i < params.linkCount; i++) {
+      const angle = rng() * Math.PI * 2;
+      const next = ringLinkedTo(prev, major * (0.85 + rng() * 0.25), minor, params.detail, angle);
+      geos.push(next.geo);
+      prev = next;
+    }
+  }
 
   return mergeGeometries(geos, false);
 }
@@ -414,16 +567,19 @@ const labels = {
 
 function readParams() {
   const detail = parseInt(sliders.detail.value, 10);
+  const twistDeg = parseFloat(sliders.twist.value);
   return {
     height: parseFloat(sliders.height.value),
     radius: parseFloat(sliders.radius.value),
-    twistRad: parseFloat(sliders.twist.value) * Math.PI / 180,
+    twistRad: twistDeg * Math.PI / 180,
+    wildness: Math.min(1, twistDeg / 720), // reuse twist slider as "wildness"
     bars: parseInt(sliders.bars.value, 10),
     barThickness: parseFloat(sliders.bart.value) / 10,
     pinch: parseFloat(sliders.pinch.value) / 100,
     linkCount: parseInt(sliders.links.value, 10),
     linkThickness: parseFloat(sliders.linkt.value) / 10,
     detail,
+    seed: currentSeed,
   };
 }
 
@@ -502,12 +658,13 @@ for (const k of Object.keys(sliders)) {
 }
 
 document.getElementById('reset').addEventListener('click', () => {
-  sliders.height.value = 120;
-  sliders.radius.value = 42;
-  sliders.twist.value = 220;
-  sliders.bars.value = 6;
+  currentSeed = 424242;
+  sliders.height.value = 140;
+  sliders.radius.value = 48;
+  sliders.twist.value = 420;
+  sliders.bars.value = 7;
   sliders.bart.value = 22;
-  sliders.pinch.value = 35;
+  sliders.pinch.value = 30;
   sliders.links.value = 4;
   sliders.linkt.value = 26;
   sliders.detail.value = 24;
@@ -519,14 +676,15 @@ document.getElementById('randomize').addEventListener('click', () => {
     const n = Math.round((Math.random() * (max - min) + min) / step) * step;
     return n;
   };
-  sliders.height.value = rand(80, 200);
-  sliders.radius.value = rand(28, 70);
-  sliders.twist.value = rand(0, 600, 10);
-  sliders.bars.value = rand(4, 10);
-  sliders.bart.value = rand(15, 32);
-  sliders.pinch.value = rand(10, 60);
+  currentSeed = (Math.random() * 1e9) | 0;
+  sliders.height.value = rand(90, 200);
+  sliders.radius.value = rand(32, 70);
+  sliders.twist.value = rand(120, 700, 10);
+  sliders.bars.value = rand(5, 11);
+  sliders.bart.value = rand(18, 32);
+  sliders.pinch.value = rand(10, 55);
   sliders.links.value = rand(2, 6);
-  sliders.linkt.value = rand(18, 36);
+  sliders.linkt.value = rand(20, 36);
   scheduleRebuild();
 });
 
