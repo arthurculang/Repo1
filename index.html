@@ -118,8 +118,12 @@
   }
   button.primary:hover { border-color: var(--accent); }
 
-  #view { position: relative; background: radial-gradient(ellipse at center, #1a1f2b 0%, #0b0d12 70%); }
-  #view canvas { display: block; touch-action: none; }
+  #view {
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(ellipse at center, #1a1f2b 0%, #0b0d12 70%);
+  }
+  #view canvas { display: block; width: 100% !important; height: 100% !important; touch-action: none; }
   #hint {
     position: absolute; bottom: 14px; left: 14px;
     color: var(--muted); font-size: 12px;
@@ -472,8 +476,23 @@ function rebuild() {
   sculptureGroup.add(wire);
 
   scene.add(sculptureGroup);
-  // Drop it so it rests on the shadow plane visually
-  sculptureGroup.position.y = params.height / 2 - 140;
+
+  // Auto-frame the camera to the sculpture's bounding sphere.
+  geo.computeBoundingSphere();
+  const sphere = geo.boundingSphere;
+  const fov = camera.fov * Math.PI / 180;
+  const aspect = Math.max(0.0001, view.clientWidth / Math.max(1, view.clientHeight));
+  const distV = sphere.radius / Math.sin(fov / 2);
+  const distH = sphere.radius / Math.sin(Math.atan(Math.tan(fov / 2) * aspect));
+  const dist = Math.max(distV, distH) * 1.25;
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  controls.target.set(0, 0, 0);
+  camera.position.copy(dir.multiplyScalar(dist));
+  camera.near = Math.max(0.1, dist / 100);
+  camera.far = dist * 10;
+  camera.updateProjectionMatrix();
+  // Pull the ground plane down to sit just beneath the object.
+  ground.position.y = -sphere.radius - 5;
 
   status.innerHTML = `<span class="ok">●</span> ${geo.attributes.position.count.toLocaleString()} verts`;
 }
@@ -550,7 +569,7 @@ function resize() {
   const w = view.clientWidth;
   const h = view.clientHeight;
   if (w === 0 || h === 0) return;
-  renderer.setSize(w, h, false);
+  renderer.setSize(w, h, true);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
