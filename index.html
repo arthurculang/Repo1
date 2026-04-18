@@ -17,15 +17,67 @@
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif; }
-  #app { display: grid; grid-template-columns: 320px 1fr; height: 100vh; }
-  @media (max-width: 800px) { #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } }
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
+    overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
+  #app {
+    display: flex; flex-direction: row;
+    height: 100vh; height: 100dvh;
+    width: 100vw; overflow: hidden;
+  }
 
   #panel {
+    flex: 0 0 320px;
     background: var(--panel);
     border-right: 1px solid var(--border);
     padding: 18px 18px 12px;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  #view {
+    flex: 1 1 auto;
+    min-width: 0; min-height: 0;
+  }
+  #panel-toggle { display: none; }
+
+  @media (max-width: 800px) {
+    #app { flex-direction: column; }
+    #view { flex: 1 1 auto; order: 1; }
+    #panel {
+      order: 2;
+      flex: 0 0 auto;
+      width: 100%;
+      max-height: 45vh;
+      max-height: 45dvh;
+      border-right: none;
+      border-top: 1px solid var(--border);
+      padding: 14px 14px 18px;
+      transition: max-height .25s ease, padding .25s ease;
+    }
+    #app.collapsed #panel {
+      max-height: 54px;
+      padding-top: 10px;
+      padding-bottom: 10px;
+      overflow: hidden;
+    }
+    #panel-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      margin: -4px 0 10px;
+      padding: 6px 10px;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--ink);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #panel-toggle::before {
+      content: ""; width: 36px; height: 4px; border-radius: 3px;
+      background: var(--muted); display: inline-block;
+    }
   }
   #panel h1 {
     margin: 0 0 4px; font-size: 16px; letter-spacing: .3px;
@@ -67,6 +119,7 @@
   button.primary:hover { border-color: var(--accent); }
 
   #view { position: relative; background: radial-gradient(ellipse at center, #1a1f2b 0%, #0b0d12 70%); }
+  #view canvas { display: block; touch-action: none; }
   #hint {
     position: absolute; bottom: 14px; left: 14px;
     color: var(--muted); font-size: 12px;
@@ -84,6 +137,7 @@
 <body>
 <div id="app">
   <aside id="panel">
+    <button id="panel-toggle" type="button" aria-label="Toggle controls"></button>
     <h1>Captive Lattice</h1>
     <div class="sub">
       A generative sculpture: a twisted outer cage surrounding a free-floating
@@ -147,7 +201,7 @@
   </aside>
 
   <main id="view">
-    <div id="hint">Drag to rotate · scroll to zoom · right-drag to pan</div>
+    <div id="hint"></div>
     <div id="status">Ready</div>
   </main>
 </div>
@@ -475,15 +529,36 @@ document.getElementById('download').addEventListener('click', () => {
   status.innerHTML = `<span class="ok">●</span> STL downloaded`;
 });
 
+// --- Panel collapse (mobile) ---
+const app = document.getElementById('app');
+const panel = document.getElementById('panel');
+const toggle = document.getElementById('panel-toggle');
+toggle.addEventListener('click', () => {
+  app.classList.toggle('collapsed');
+  // wait for CSS transition, then resize renderer
+  setTimeout(resize, 280);
+});
+
+// --- Touch-friendly hint ---
+const isTouch = matchMedia('(hover: none)').matches || 'ontouchstart' in window;
+document.getElementById('hint').textContent = isTouch
+  ? 'Drag to rotate · pinch to zoom · two-finger drag to pan'
+  : 'Drag to rotate · scroll to zoom · right-drag to pan';
+
 // --- Render loop ---
 function resize() {
   const w = view.clientWidth;
   const h = view.clientHeight;
+  if (w === 0 || h === 0) return;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+if (window.ResizeObserver) {
+  new ResizeObserver(resize).observe(view);
+}
 resize();
 
 function animate() {
